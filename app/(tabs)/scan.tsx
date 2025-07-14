@@ -1,0 +1,499 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Image
+} from 'react-native';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
+import { Camera, Image as ImageIcon, AlertCircle, AlertTriangle } from 'lucide-react-native';
+import Colors from '@/constants/colors';
+import Button from '@/components/Button';
+import TrialBanner from '@/components/TrialBanner';
+import { useCardStore } from '@/store/cardStore';
+import { useUserStore } from '@/store/userStore';
+import { processBusinessCard } from '@/utils/ocrUtils';
+import { BusinessCard } from '@/types';
+
+export default function ScanScreen() {
+  const router = useRouter();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [facing, setFacing] = useState<CameraType>('back');
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  
+  const { addCard, checkDuplicate } = useCardStore();
+  const { canScanMore, incrementScannedCards, isTrialActive } = useUserStore();
+  
+  const cameraRef = useRef<any>(null);
+  
+  useEffect(() => {
+    requestPermission();
+  }, []);
+  
+  const showDuplicateAlert = (existingCard: BusinessCard, newCard: BusinessCard) => {
+    Alert.alert(
+      "Data Already Captured",
+      `This contact appears to already exist in your collection:\n\nExisting: ${existingCard.name}${existingCard.company ? ` - ${existingCard.company}` : ''}\nNew: ${newCard.name}${newCard.company ? ` - ${newCard.company}` : ''}\n\nWould you like to add it anyway or view the existing card?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "View Existing", 
+          onPress: () => router.push(`/card/${existingCard.id}`)
+        },
+        { 
+          text: "Add Anyway", 
+          onPress: () => {
+            // Force add the card
+            const cardWithNewId: BusinessCard = {
+              ...newCard,
+              id: Date.now().toString() + '_duplicate',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            
+            // Bypass duplicate check by directly updating the store
+            useCardStore.getState().cards.unshift(cardWithNewId);
+            incrementScannedCards();
+            router.push(`/card/${cardWithNewId.id}`);
+          }
+        }
+      ]
+    );
+  };
+  
+  const handleCapture = async () => {
+    if (!canScanMore()) {
+      Alert.alert(
+        "Scan Limit Reached",
+        "You've reached your scan limit. Upgrade your plan to continue scanning.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upgrade", onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+    
+    try {
+      setIsCapturing(true);
+      
+      if (Platform.OS !== 'web' && cameraRef.current) {
+        // Capture photo from camera on mobile
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+        });
+        
+        if (photo && photo.uri) {
+          setCapturedImage(photo.uri);
+          await processImage(photo.uri);
+        }
+      } else {
+        // For web or fallback, use a demo image
+        const demoImageUri = 'https://images.unsplash.com/photo-1589492477829-5e65395b66cc?ixlib=rb-1.2.1&auto=format&fit=crop&w=1000&q=80';
+        setCapturedImage(demoImageUri);
+        await processImage(demoImageUri);
+      }
+    } catch (error) {
+      console.error('Error capturing image:', error);
+      Alert.alert('Error', 'Failed to capture image. Please try again.');
+    } finally {
+      setIsCapturing(false);
+      setCapturedImage(null);
+    }
+  };
+  
+  const handlePickImage = async () => {
+    if (!canScanMore()) {
+      Alert.alert(
+        "Scan Limit Reached",
+        "You've reached your scan limit. Upgrade your plan to continue scanning.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upgrade", onPress: () => router.push('/subscription') }
+        ]
+      );
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const imageUri = result.assets[0].uri;
+        setCapturedImage(imageUri);
+        await processImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    } finally {
+      setCapturedImage(null);
+    }
+  };
+  
+  const processImage = async (imageUri: string) => {
+    try {
+      setIsProcessing(true);
+      
+      // Process the image with AI OCR
+      const cardData = await processBusinessCard(imageUri);
+      
+      // Create a new card
+      const newCard: BusinessCard = {
+        id: Date.now().toString(),
+        name: cardData.name || 'Unknown Contact',
+        title: cardData.title,
+        company: cardData.company,
+        email: cardData.email,
+        phone: cardData.phone,
+        website: cardData.website,
+        address: cardData.address,
+        imageUri: imageUri,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      
+      // Check for duplicates
+      const duplicate = checkDuplicate(newCard);
+      
+      if (duplicate) {
+        // Show duplicate alert
+        showDuplicateAlert(duplicate, newCard);
+        return;
+      }
+      
+      // Add the card to the store (this will also check for duplicates)
+      const added = await addCard(newCard);
+      
+      if (added) {
+        incrementScannedCards();
+        // Navigate to the card details screen
+        router.push(`/card/${newCard.id}`);
+      } else {
+        // This shouldn't happen since we already checked, but just in case
+        Alert.alert('Duplicate Detected', 'This contact already exists in your collection.');
+      }
+    } catch (error) {
+      console.error('Error processing image:', error);
+      Alert.alert('Error', 'Failed to process the business card. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  const toggleCameraFacing = () => {
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
+  };
+  
+  if (!permission) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+      </View>
+    );
+  }
+  
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <AlertCircle size={48} color={Colors.light.error} style={styles.icon} />
+        <Text style={styles.title}>Camera Permission Required</Text>
+        <Text style={styles.message}>
+          We need camera permission to scan business cards. Please grant permission to continue.
+        </Text>
+        <Button 
+          title="Grant Permission" 
+          onPress={requestPermission} 
+          variant="primary"
+          style={styles.button}
+        />
+      </View>
+    );
+  }
+  
+  return (
+    <View style={styles.container}>
+      <TrialBanner />
+      
+      {isProcessing ? (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="large" color={Colors.light.primary} />
+          <Text style={styles.processingText}>Processing business card...</Text>
+          <Text style={styles.processingSubtext}>Extracting contact information with AI...</Text>
+          <Text style={styles.processingNote}>Checking for duplicates...</Text>
+        </View>
+      ) : (
+        <>
+          {Platform.OS !== 'web' ? (
+            <CameraView 
+              style={styles.camera} 
+              facing={facing}
+              ref={cameraRef}
+            >
+              <View style={styles.overlay}>
+                <View style={styles.scanFrame} />
+                <Text style={styles.scanText}>Position business card within frame</Text>
+                <Text style={styles.scanSubtext}>Ensure good lighting and clear text</Text>
+              </View>
+              
+              <View style={styles.controls}>
+                <TouchableOpacity 
+                  style={styles.flipButton}
+                  onPress={toggleCameraFacing}
+                >
+                  <Camera size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            </CameraView>
+          ) : (
+            <View style={styles.webPlaceholder}>
+              <Camera size={48} color={Colors.light.primary} style={styles.icon} />
+              <Text style={styles.title}>Camera Preview</Text>
+              <Text style={styles.message}>
+                Camera preview is not fully supported on web. Please use the buttons below to capture or select an image.
+              </Text>
+            </View>
+          )}
+          
+          {capturedImage && (
+            <View style={styles.previewContainer}>
+              <Image 
+                source={{ uri: capturedImage }} 
+                style={styles.preview} 
+                resizeMode="contain"
+              />
+            </View>
+          )}
+          
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Capture"
+              onPress={handleCapture}
+              variant="primary"
+              loading={isCapturing}
+              disabled={isCapturing || isProcessing}
+              style={styles.captureButton}
+              icon={<Camera size={20} color="white" style={{ marginRight: 8 }} />}
+            />
+            
+            <Button
+              title="Select Image"
+              onPress={handlePickImage}
+              variant="outline"
+              disabled={isCapturing || isProcessing}
+              style={styles.selectButton}
+              icon={<ImageIcon size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />}
+            />
+          </View>
+          
+          <View style={styles.instructionContainer}>
+            <Text style={styles.instructionTitle}>How to scan:</Text>
+            <Text style={styles.instructionText}>
+              1. Position the business card within the frame
+            </Text>
+            <Text style={styles.instructionText}>
+              2. Ensure good lighting and clear text visibility
+            </Text>
+            <Text style={styles.instructionText}>
+              3. Tap "Capture" or select an existing image
+            </Text>
+            <Text style={styles.instructionText}>
+              4. Review and edit the extracted information
+            </Text>
+            <View style={styles.duplicateInfo}>
+              <AlertTriangle size={16} color={Colors.light.warning} />
+              <Text style={styles.duplicateText}>
+                Duplicate detection is active - we'll alert you if this contact already exists
+              </Text>
+            </View>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  camera: {
+    flex: 1,
+  },
+  webPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.light.card,
+    margin: 16,
+    borderRadius: 12,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanFrame: {
+    width: 300,
+    height: 190,
+    borderWidth: 3,
+    borderColor: 'white',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  scanText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 20,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  scanSubtext: {
+    color: 'white',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  controls: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+  },
+  flipButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 16,
+    backgroundColor: Colors.light.background,
+  },
+  captureButton: {
+    flex: 1,
+    marginRight: 8,
+  },
+  selectButton: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  processingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  processingText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    textAlign: 'center',
+  },
+  processingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+  },
+  processingNote: {
+    marginTop: 12,
+    fontSize: 12,
+    color: Colors.light.primary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  previewContainer: {
+    position: 'absolute',
+    top: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  preview: {
+    width: 200,
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: Colors.light.primary,
+  },
+  instructionContainer: {
+    padding: 16,
+    backgroundColor: Colors.light.card,
+    margin: 16,
+    borderRadius: 8,
+  },
+  instructionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  instructionText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
+  },
+  duplicateInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: Colors.light.highlight,
+    borderRadius: 6,
+  },
+  duplicateText: {
+    fontSize: 12,
+    color: Colors.light.text,
+    marginLeft: 8,
+    flex: 1,
+  },
+  icon: {
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 32,
+  },
+  button: {
+    minWidth: 200,
+  },
+});
