@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import Colors from '@/constants/colors';
-import { Edit2, Check, X } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface CardDetailFieldProps {
   label: string;
@@ -54,14 +54,14 @@ export default function CardDetailField({
               style={[styles.actionButton, styles.saveButton]} 
               onPress={handleSave}
             >
-              <Check size={16} color="white" />
+              <Ionicons name="checkmark" size={16} color="white" />
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.actionButton, styles.cancelButton]} 
               onPress={handleCancel}
             >
-              <X size={16} color="white" />
+              <Ionicons name="close" size={16} color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -82,7 +82,7 @@ export default function CardDetailField({
             style={styles.editButton}
             onPress={() => setIsEditing(true)}
           >
-            <Edit2 size={16} color={Colors.light.primary} />
+            <Ionicons name="create" size={16} color={Colors.light.primary} />
           </TouchableOpacity>
         </View>
       )}

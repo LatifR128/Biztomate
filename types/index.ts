@@ -26,5 +26,6 @@ export type SubscriptionPlan = {
   name: string;
   price: string;
   cardsLimit: number;
+  productId: string;
   features: string[];
 };

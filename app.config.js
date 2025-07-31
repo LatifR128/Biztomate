@@ -1,0 +1,1 @@
+module.exports = { expo: { name: "Biztomate", slug: "biztomate-scanner", version: "1.3.4", ios: { bundleIdentifier: "com.biztomate.scanner", buildNumber: "17" }, plugins: ["expo-router", ["expo-in-app-purchases", { ios: { bundleIdentifier: "com.biztomate.scanner" } }]] } };

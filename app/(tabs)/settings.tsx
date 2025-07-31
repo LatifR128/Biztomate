@@ -9,18 +9,10 @@ import {
   Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  CreditCard, 
-  HelpCircle, 
-  Mail, 
-  Star, 
-  FileText, 
-  Shield, 
-  ExternalLink,
-  LogOut
-} from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
+import { useAuthStore } from '@/store/authStore';
 import { SUBSCRIPTION_PLANS } from '@/constants/subscriptions';
 
 export default function SettingsScreen() {
@@ -30,8 +22,10 @@ export default function SettingsScreen() {
     isTrialActive, 
     isSubscriptionActive, 
     getTrialDaysLeft, 
-    getRemainingCards 
+    getRemainingCards,
+    resetUser
   } = useUserStore();
+  const { signOut, deleteAccount } = useAuthStore();
   
   const currentPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === user.subscriptionPlan);
   const trialDaysLeft = getTrialDaysLeft();
@@ -72,13 +66,64 @@ export default function SettingsScreen() {
     router.push('/terms');
   };
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
     Alert.alert(
-      "Log Out",
-      "Are you sure you want to log out?",
+      "Sign Out",
+      "Are you sure you want to sign out? You'll need to sign in again to access your account.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Log Out", style: "destructive", onPress: () => console.log("User logged out") }
+        { 
+          text: "Sign Out", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await signOut();
+              // Navigation will be handled by the auth state change
+            } catch (error) {
+              Alert.alert("Error", "Failed to sign out. Please try again.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete your account? This action cannot be undone and will permanently remove all your data including scanned cards and subscription information.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete Account", 
+          style: "destructive", 
+          onPress: () => {
+            Alert.alert(
+              "Final Confirmation",
+              "This is your final warning. Deleting your account will:\n\n• Permanently delete all your scanned cards\n• Cancel your subscription\n• Remove all your data from our servers\n• This action cannot be undone\n\nAre you absolutely sure?",
+              [
+                { text: "Cancel", style: "cancel" },
+                { 
+                  text: "Yes, Delete My Account", 
+                  style: "destructive", 
+                  onPress: async () => {
+                    try {
+                      await deleteAccount();
+                      resetUser();
+                      Alert.alert(
+                        "Account Deleted",
+                        "Your account has been successfully deleted. Thank you for using Biztomate.",
+                        [{ text: "OK" }]
+                      );
+                    } catch (error) {
+                      Alert.alert("Error", "Failed to delete account. Please try again or contact support.");
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        }
       ]
     );
   };
@@ -126,18 +171,18 @@ export default function SettingsScreen() {
           style={styles.menuItem}
           onPress={handleSubscription}
         >
-          <CreditCard size={20} color={Colors.light.primary} />
+          <Ionicons name="card" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Subscription Plans</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.menuItem}
           onPress={handleExport}
         >
-          <FileText size={20} color={Colors.light.primary} />
+          <Ionicons name="document-text" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Export Options</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
       </View>
       
@@ -148,27 +193,27 @@ export default function SettingsScreen() {
           style={styles.menuItem}
           onPress={handleHelp}
         >
-          <HelpCircle size={20} color={Colors.light.primary} />
+          <Ionicons name="help-circle" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Help Center</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.menuItem}
           onPress={handleContact}
         >
-          <Mail size={20} color={Colors.light.primary} />
+          <Ionicons name="mail" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Contact Support</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.menuItem}
           onPress={handleRate}
         >
-          <Star size={20} color={Colors.light.primary} />
+          <Ionicons name="star" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Rate the App</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
       </View>
       
@@ -179,28 +224,64 @@ export default function SettingsScreen() {
           style={styles.menuItem}
           onPress={handlePrivacy}
         >
-          <Shield size={20} color={Colors.light.primary} />
+          <Ionicons name="shield-checkmark" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Privacy Policy</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.menuItem}
           onPress={handleTerms}
         >
-          <FileText size={20} color={Colors.light.primary} />
+          <Ionicons name="document-text" size={20} color={Colors.light.primary} />
           <Text style={styles.menuText}>Terms of Service</Text>
-          <ExternalLink size={16} color={Colors.light.textSecondary} />
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
         </TouchableOpacity>
       </View>
-      
-      <TouchableOpacity 
-        style={[styles.menuItem, styles.logoutButton]}
-        onPress={handleLogout}
-      >
-        <LogOut size={20} color={Colors.light.error} />
-        <Text style={[styles.menuText, styles.logoutText]}>Log Out</Text>
-      </TouchableOpacity>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account</Text>
+        
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out" size={20} color={Colors.light.primary} />
+          <Text style={styles.menuText}>Sign Out</Text>
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.menuItem, styles.dangerItem]}
+          onPress={handleDeleteAccount}
+        >
+          <Ionicons name="trash" size={20} color={Colors.light.error} />
+          <Text style={[styles.menuText, styles.dangerText]}>Delete Account</Text>
+          <Ionicons name="open-outline" size={16} color={Colors.light.error} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Development</Text>
+        
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/auth' as any)}
+        >
+          <Ionicons name="log-in" size={20} color={Colors.light.primary} />
+          <Text style={styles.menuText}>Test Auth Screens</Text>
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/welcome' as any)}
+        >
+          <Ionicons name="home" size={20} color={Colors.light.primary} />
+          <Text style={styles.menuText}>Welcome Screen</Text>
+          <Ionicons name="open-outline" size={16} color={Colors.light.textSecondary} />
+        </TouchableOpacity>
+      </View>
       
       <View style={styles.footer}>
         <Text style={styles.version}>Version 1.0.0</Text>
@@ -217,24 +298,21 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
-    paddingHorizontal: 16,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    color: Colors.light.textSecondary,
+    color: Colors.light.text,
     marginBottom: 12,
-    marginLeft: 4,
+    paddingHorizontal: 20,
   },
   planCard: {
+    marginHorizontal: 20,
     backgroundColor: Colors.light.card,
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
   },
   planHeader: {
     flexDirection: 'row',
@@ -249,9 +327,9 @@ const styles = StyleSheet.create({
   },
   upgradeButton: {
     backgroundColor: Colors.light.primary,
-    paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   upgradeText: {
     color: 'white',
@@ -268,23 +346,22 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     backgroundColor: Colors.light.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 1,
+  },
+  dangerItem: {
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.light.error,
   },
   menuText: {
     fontSize: 16,
     color: Colors.light.text,
-    flex: 1,
     marginLeft: 12,
+    flex: 1,
   },
-  logoutButton: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  logoutText: {
+  dangerText: {
     color: Colors.light.error,
   },
   footer: {

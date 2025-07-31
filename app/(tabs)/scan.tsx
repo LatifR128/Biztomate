@@ -12,7 +12,7 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { Camera, Image as ImageIcon, AlertCircle, AlertTriangle } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import TrialBanner from '@/components/TrialBanner';
@@ -210,7 +210,7 @@ export default function ScanScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <AlertCircle size={48} color={Colors.light.error} style={styles.icon} />
+        <Ionicons name="alert-circle" size={48} color={Colors.light.error} style={styles.icon} />
         <Text style={styles.title}>Camera Permission Required</Text>
         <Text style={styles.message}>
           We need camera permission to scan business cards. Please grant permission to continue.
@@ -255,13 +255,13 @@ export default function ScanScreen() {
                   style={styles.flipButton}
                   onPress={toggleCameraFacing}
                 >
-                  <Camera size={24} color="white" />
+                  <Ionicons name="camera" size={24} color="white" />
                 </TouchableOpacity>
               </View>
             </CameraView>
           ) : (
             <View style={styles.webPlaceholder}>
-              <Camera size={48} color={Colors.light.primary} style={styles.icon} />
+              <Ionicons name="camera" size={48} color={Colors.light.primary} style={styles.icon} />
               <Text style={styles.title}>Camera Preview</Text>
               <Text style={styles.message}>
                 Camera preview is not fully supported on web. Please use the buttons below to capture or select an image.
@@ -271,8 +271,7 @@ export default function ScanScreen() {
           
           {capturedImage && (
             <View style={styles.previewContainer}>
-              <Image 
-                source={{ uri: capturedImage }} 
+              <Ionicons name="image" source={{ uri: capturedImage }} 
                 style={styles.preview} 
                 resizeMode="contain"
               />
@@ -287,7 +286,7 @@ export default function ScanScreen() {
               loading={isCapturing}
               disabled={isCapturing || isProcessing}
               style={styles.captureButton}
-              icon={<Camera size={20} color="white" style={{ marginRight: 8 }} />}
+              icon={<Ionicons name="camera" size={20} color="white" style={{ marginRight: 8 }} />}
             />
             
             <Button
@@ -296,7 +295,7 @@ export default function ScanScreen() {
               variant="outline"
               disabled={isCapturing || isProcessing}
               style={styles.selectButton}
-              icon={<ImageIcon size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />}
+              icon={<Ionicons name="image" size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />}
             />
           </View>
           
@@ -315,7 +314,7 @@ export default function ScanScreen() {
               4. Review and edit the extracted information
             </Text>
             <View style={styles.duplicateInfo}>
-              <AlertTriangle size={16} color={Colors.light.warning} />
+              <Ionicons name="warning" size={16} color={Colors.light.warning} />
               <Text style={styles.duplicateText}>
                 Duplicate detection is active - we'll alert you if this contact already exists
               </Text>

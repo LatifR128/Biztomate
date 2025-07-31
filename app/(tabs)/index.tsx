@@ -8,7 +8,7 @@ import {
   Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ScanLine, Crown, Zap, Shield, Users, Star } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import TrialBanner from '@/components/TrialBanner';
@@ -38,9 +38,9 @@ export default function HomeScreen() {
           <View style={styles.logo}>
             <Text style={styles.logoText}>📱</Text>
           </View>
-          <Text style={styles.appName}>Biztomate Scanner</Text>
+          <Text style={styles.appName}>Biztomate</Text>
           <View style={styles.premiumBadge}>
-            <Crown size={16} color="white" />
+            <Ionicons name="diamond" size={16} color="white" />
             <Text style={styles.premiumText}>AI Powered</Text>
           </View>
         </View>
@@ -78,7 +78,7 @@ export default function HomeScreen() {
           variant="primary"
           size="large"
           style={styles.primaryButton}
-          icon={<ScanLine size={24} color="white" style={{ marginRight: 8 }} />}
+          icon={<Ionicons name="scan" size={24} color="white" style={{ marginRight: 8 }} />}
         />
         
         <Button
@@ -87,16 +87,16 @@ export default function HomeScreen() {
           variant="outline"
           size="large"
           style={styles.secondaryButton}
-          icon={<Star size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />}
+          icon={<Ionicons name="star" size={20} color={Colors.light.primary} style={{ marginRight: 8 }} />}
         />
       </View>
       
       <View style={styles.featuresContainer}>
-        <Text style={styles.featuresTitle}>Why Choose Biztomate Scanner?</Text>
+        <Text style={styles.featuresTitle}>Why Choose Biztomate?</Text>
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <ScanLine size={24} color={Colors.light.primary} />
+            <Ionicons name="scan" size={24} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Smart OCR Technology</Text>
@@ -108,7 +108,7 @@ export default function HomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Zap size={24} color={Colors.light.primary} />
+            <Ionicons name="flash" size={24} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Instant Export</Text>
@@ -120,7 +120,7 @@ export default function HomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Shield size={24} color={Colors.light.primary} />
+            <Ionicons name="shield-checkmark" size={24} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Secure & Private</Text>
@@ -132,7 +132,7 @@ export default function HomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Users size={24} color={Colors.light.primary} />
+            <Ionicons name="people" size={24} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Team Collaboration</Text>
@@ -146,6 +146,15 @@ export default function HomeScreen() {
       <View style={styles.footer}>
         <Text style={styles.brandingText}>Empowered by Biztomate Inc.</Text>
       </View>
+      
+      {/* Development Test Button */}
+      <TouchableOpacity 
+        style={styles.testButton}
+        onPress={() => router.push('/auth' as any)}
+      >
+        <Ionicons name="bug" size={20} color="white" />
+        <Text style={styles.testButtonText}>Test Auth</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -287,5 +296,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textSecondary,
     fontWeight: '500',
+  },
+  testButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    backgroundColor: Colors.light.primary,
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  testButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });

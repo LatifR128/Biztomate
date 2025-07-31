@@ -1,0 +1,208 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+
+const app = new Hono();
+
+// Receipt validation schema
+const ReceiptValidationSchema = z.object({
+  receiptData: z.string(),
+  password: z.string().optional(), // App-specific shared secret
+});
+
+// App Store receipt validation endpoints
+const PRODUCTION_URL = 'https://buy.itunes.apple.com/verifyReceipt';
+const SANDBOX_URL = 'https://sandbox.itunes.apple.com/verifyReceipt';
+
+interface ReceiptValidationResponse {
+  status: number;
+  environment: string;
+  receipt: {
+    in_app: Array<{
+      product_id: string;
+      transaction_id: string;
+      original_transaction_id: string;
+      purchase_date: string;
+      expires_date?: string;
+      cancellation_date?: string;
+    }>;
+  };
+  latest_receipt_info?: Array<{
+    product_id: string;
+    transaction_id: string;
+    original_transaction_id: string;
+    purchase_date: string;
+    expires_date?: string;
+    cancellation_date?: string;
+  }>;
+}
+
+/**
+ * Validate receipt with Apple's servers
+ */
+async function validateReceiptWithApple(
+  receiptData: string,
+  password?: string
+): Promise<ReceiptValidationResponse> {
+  const requestBody = {
+    'receipt-data': receiptData,
+    ...(password && { password }),
+    'exclude-old-transactions': true,
+  };
+
+  try {
+    // First try production environment
+    const productionResponse = await fetch(PRODUCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const productionResult = await productionResponse.json();
+
+    // If production validation fails with sandbox receipt error, try sandbox
+    if (productionResult.status === 21007) {
+      console.log('Production validation failed, trying sandbox...');
+      
+      const sandboxResponse = await fetch(SANDBOX_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const sandboxResult = await sandboxResponse.json();
+      return sandboxResult;
+    }
+
+    return productionResult;
+  } catch (error) {
+    console.error('Receipt validation error:', error);
+    throw new Error('Failed to validate receipt with Apple');
+  }
+}
+
+/**
+ * Validate subscription status
+ */
+function validateSubscriptionStatus(
+  receiptInfo: ReceiptValidationResponse['latest_receipt_info']
+): {
+  isValid: boolean;
+  productId?: string;
+  expiresDate?: string;
+  isExpired: boolean;
+} {
+  if (!receiptInfo || receiptInfo.length === 0) {
+    return { isValid: false, isExpired: true };
+  }
+
+  // Get the most recent transaction
+  const latestTransaction = receiptInfo[0];
+  const now = new Date();
+  const expiresDate = latestTransaction.expires_date 
+    ? new Date(latestTransaction.expires_date) 
+    : null;
+
+  const isExpired = expiresDate ? expiresDate < now : true;
+
+  return {
+    isValid: !isExpired,
+    productId: latestTransaction.product_id,
+    expiresDate: latestTransaction.expires_date,
+    isExpired,
+  };
+}
+
+/**
+ * Parse and validate receipt data format
+ */
+function parseReceiptData(receiptData: string): any {
+  try {
+    // Decode base64 receipt data
+    const decodedData = Buffer.from(receiptData, 'base64').toString('utf-8');
+    const receipt = JSON.parse(decodedData);
+    
+    // Validate receipt structure
+    if (!receipt.bundle_id || !receipt.in_app || !Array.isArray(receipt.in_app)) {
+      throw new Error('Invalid receipt format');
+    }
+    
+    return receipt;
+  } catch (error) {
+    console.error('Error parsing receipt data:', error);
+    throw new Error('Invalid receipt data format');
+  }
+}
+
+// POST /api/receipt-validation
+app.post('/api/receipt-validation', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { receiptData, password } = ReceiptValidationSchema.parse(body);
+
+    // Parse and validate receipt format
+    const parsedReceipt = parseReceiptData(receiptData);
+    console.log('Receipt parsed successfully for bundle:', parsedReceipt.bundle_id);
+
+    // Validate receipt with Apple
+    const validationResult = await validateReceiptWithApple(receiptData, password);
+
+    // Check if validation was successful
+    if (validationResult.status !== 0) {
+      console.error('Receipt validation failed with status:', validationResult.status);
+      return c.json({
+        success: false,
+        error: `Receipt validation failed with status: ${validationResult.status}`,
+        status: validationResult.status,
+      }, 400);
+    }
+
+    // Validate subscription status
+    const subscriptionStatus = validateSubscriptionStatus(
+      validationResult.latest_receipt_info
+    );
+
+    console.log('Receipt validation successful:', {
+      environment: validationResult.environment,
+      subscriptionValid: subscriptionStatus.isValid,
+      productId: subscriptionStatus.productId,
+    });
+
+    return c.json({
+      success: true,
+      environment: validationResult.environment,
+      subscription: subscriptionStatus,
+      receipt: validationResult.receipt,
+    });
+
+  } catch (error) {
+    console.error('Receipt validation error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return c.json({
+        success: false,
+        error: 'Invalid request data',
+        details: error.issues,
+      }, 400);
+    }
+
+    return c.json({
+      success: false,
+      error: 'Internal server error',
+    }, 500);
+  }
+});
+
+// GET /api/receipt-validation/health
+app.get('/api/receipt-validation/health', (c) => {
+  return c.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+  });
+});
+
+export default app; 

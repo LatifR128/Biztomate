@@ -1,5 +1,9 @@
 import { BusinessCard } from '@/types';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+import { OAUTH_CONFIG, OAUTH_STORAGE_KEYS, API_ENDPOINTS } from '@/constants/oauth';
 
 // Convert cards to CSV format with proper field mapping
 export const cardsToCSV = (cards: BusinessCard[]): string => {
@@ -77,206 +81,354 @@ const downloadCSVFile = (csvContent: string, filename: string = 'business_cards.
   return false;
 };
 
-// Google Sheets integration with OAuth flow
+// Google OAuth Flow
+const initiateGoogleOAuth = async (): Promise<string | null> => {
+  try {
+    const authUrl = `${OAUTH_CONFIG.GOOGLE.AUTH_URL}?` +
+      `client_id=${OAUTH_CONFIG.GOOGLE.CLIENT_ID}` +
+      `&redirect_uri=${encodeURIComponent(OAUTH_CONFIG.GOOGLE.REDIRECT_URI)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent(OAUTH_CONFIG.GOOGLE.SCOPES)}` +
+      `&access_type=offline` +
+      `&prompt=consent`;
+
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, OAUTH_CONFIG.GOOGLE.REDIRECT_URI);
+    
+    if (result.type === 'success' && result.url) {
+      const url = new URL(result.url);
+      const code = url.searchParams.get('code');
+      return code;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    return null;
+  }
+};
+
+// Exchange Google authorization code for access token
+const exchangeGoogleCodeForToken = async (code: string): Promise<any> => {
+  try {
+    const response = await fetch(OAUTH_CONFIG.GOOGLE.TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: OAUTH_CONFIG.GOOGLE.CLIENT_ID,
+        client_secret: OAUTH_CONFIG.GOOGLE.CLIENT_SECRET,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: OAUTH_CONFIG.GOOGLE.REDIRECT_URI,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google token exchange failed: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Google token exchange error:', error);
+    throw error;
+  }
+};
+
+// Microsoft OAuth Flow
+const initiateMicrosoftOAuth = async (): Promise<string | null> => {
+  try {
+    const authUrl = `${OAUTH_CONFIG.MICROSOFT.AUTH_URL}?` +
+      `client_id=${OAUTH_CONFIG.MICROSOFT.CLIENT_ID}` +
+      `&response_type=code` +
+      `&redirect_uri=${encodeURIComponent(OAUTH_CONFIG.MICROSOFT.REDIRECT_URI)}` +
+      `&scope=${encodeURIComponent(OAUTH_CONFIG.MICROSOFT.SCOPES)}` +
+      `&response_mode=query`;
+
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, OAUTH_CONFIG.MICROSOFT.REDIRECT_URI);
+    
+    if (result.type === 'success' && result.url) {
+      const url = new URL(result.url);
+      const code = url.searchParams.get('code');
+      return code;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Microsoft OAuth error:', error);
+    return null;
+  }
+};
+
+// Exchange Microsoft authorization code for access token
+const exchangeMicrosoftCodeForToken = async (code: string): Promise<any> => {
+  try {
+    const response = await fetch(OAUTH_CONFIG.MICROSOFT.TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: OAUTH_CONFIG.MICROSOFT.CLIENT_ID,
+        client_secret: OAUTH_CONFIG.MICROSOFT.CLIENT_SECRET,
+        code: code,
+        grant_type: 'authorization_code',
+        redirect_uri: OAUTH_CONFIG.MICROSOFT.REDIRECT_URI,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Microsoft token exchange failed: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Microsoft token exchange error:', error);
+    throw error;
+  }
+};
+
+// Google Sheets API - Create spreadsheet and add data
+const createGoogleSpreadsheet = async (accessToken: string, cards: BusinessCard[]): Promise<boolean> => {
+  try {
+    // Create new spreadsheet
+    const createResponse = await fetch(API_ENDPOINTS.GOOGLE_SHEETS.CREATE_SPREADSHEET, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        properties: {
+          title: `Business Cards - ${new Date().toLocaleDateString()}`,
+        },
+        sheets: [{
+          properties: {
+            title: 'Contacts',
+          },
+        }],
+      }),
+    });
+
+    if (!createResponse.ok) {
+      throw new Error(`Failed to create Google Spreadsheet: ${createResponse.status}`);
+    }
+
+    const spreadsheet = await createResponse.json();
+    const spreadsheetId = spreadsheet.spreadsheetId;
+
+    // Prepare data for Google Sheets
+    const values = [
+      ['Name', 'Title', 'Company', 'Email', 'Phone', 'Website', 'Address', 'Notes', 'Date Added'],
+      ...cards.map(card => [
+        card.name || '',
+        card.title || '',
+        card.company || '',
+        card.email || '',
+        card.phone || '',
+        card.website || '',
+        card.address || '',
+        card.notes || '',
+        new Date(card.createdAt).toLocaleDateString(),
+      ]),
+    ];
+
+    // Add data to spreadsheet
+    const updateResponse = await fetch(
+      API_ENDPOINTS.GOOGLE_SHEETS.UPDATE_VALUES(spreadsheetId, `A1:I${values.length}`),
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: values,
+        }),
+      }
+    );
+
+    if (!updateResponse.ok) {
+      throw new Error(`Failed to update Google Spreadsheet: ${updateResponse.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Google Sheets API error:', error);
+    throw error;
+  }
+};
+
+// Microsoft Graph API - Create Excel file in OneDrive
+const createExcelFile = async (accessToken: string, cards: BusinessCard[]): Promise<boolean> => {
+  try {
+    // Create CSV content first
+    const csvContent = cardsToCSV(cards);
+    
+    // Upload to OneDrive as Excel file
+    const fileName = `Business Cards - ${new Date().toLocaleDateString()}.csv`;
+    
+    const response = await fetch(API_ENDPOINTS.MICROSOFT_GRAPH.UPLOAD_FILE(fileName), {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'text/csv',
+      },
+      body: csvContent,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create Excel file: ${response.status}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Microsoft Graph API error:', error);
+    throw error;
+  }
+};
+
+// Real Google Sheets export
 export const exportToGoogleSheets = async (cards: BusinessCard[]): Promise<boolean> => {
   try {
     console.log('Initiating Google Sheets export for', cards.length, 'cards');
     
-    // Check if user is authenticated with Google
-    if (!isGoogleSheetsConnected()) {
-      throw new Error('Google Sheets not connected. Please connect first.');
+    const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
+    if (!tokenData) {
+      throw new Error('Google Sheets not connected. Please connect your Google account first.');
     }
+
+    const { access_token } = JSON.parse(tokenData);
     
-    // Prepare data for Google Sheets API
-    const headers = ['Name', 'Title', 'Company', 'Email', 'Phone', 'Website', 'Address', 'Notes', 'Date Added'];
-    const rows = cards.map(card => [
-      card.name || '',
-      card.title || '',
-      card.company || '',
-      card.email || '',
-      card.phone || '',
-      card.website || '',
-      card.address || '',
-      card.notes || '',
-      new Date(card.createdAt).toLocaleDateString()
-    ]);
+    // Check if token is expired and refresh if needed
+    const success = await createGoogleSpreadsheet(access_token, cards);
     
-    // In a real implementation, this would:
-    // 1. Use Google Sheets API v4
-    // 2. Create or update a spreadsheet
-    // 3. Insert data with proper formatting
-    // Example API call:
-    // const response = await gapi.client.sheets.spreadsheets.values.update({
-    //   spreadsheetId: 'your-sheet-id',
-    //   range: 'Sheet1!A1',
-    //   valueInputOption: 'RAW',
-    //   resource: {
-    //     values: [headers, ...rows]
-    //   }
-    // });
-    
-    // For now, simulate the export process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate API call to Google Sheets
-    const success = await mockGoogleSheetsAPI(cards);
-    
-    if (!success) {
-      throw new Error('Failed to export to Google Sheets');
-    }
-    
-    return true;
+    return success;
   } catch (error) {
     console.error('Google Sheets export error:', error);
     throw error;
   }
 };
 
-// Excel/OneDrive integration with Microsoft Graph API
+// Real Excel/OneDrive export
 export const exportToExcel = async (cards: BusinessCard[]): Promise<boolean> => {
   try {
     console.log('Initiating Excel/OneDrive export for', cards.length, 'cards');
     
-    // Check if user is authenticated with Microsoft
-    if (!isExcelConnected()) {
-      throw new Error('Excel/OneDrive not connected. Please connect first.');
+    const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
+    if (!tokenData) {
+      throw new Error('Excel/OneDrive not connected. Please connect your Microsoft account first.');
     }
+
+    const { access_token } = JSON.parse(tokenData);
     
-    // Prepare data for Excel format
-    const headers = ['Name', 'Title', 'Company', 'Email', 'Phone', 'Website', 'Address', 'Notes', 'Date Added'];
-    const rows = cards.map(card => [
-      card.name || '',
-      card.title || '',
-      card.company || '',
-      card.email || '',
-      card.phone || '',
-      card.website || '',
-      card.address || '',
-      card.notes || '',
-      new Date(card.createdAt).toLocaleDateString()
-    ]);
+    const success = await createExcelFile(access_token, cards);
     
-    // In a real implementation, this would:
-    // 1. Use Microsoft Graph API
-    // 2. Create or update an Excel file in OneDrive
-    // 3. Insert data with proper formatting
-    // Example API call:
-    // const response = await fetch('https://graph.microsoft.com/v1.0/me/drive/items/{item-id}/workbook/worksheets/{worksheet-id}/range(address=\'A1\')', {
-    //   method: 'PATCH',
-    //   headers: {
-    //     'Authorization': `Bearer ${accessToken}`,
-    //     'Content-Type': 'application/json'
-    //   },
-    //   body: JSON.stringify({
-    //     values: [headers, ...rows]
-    //   })
-    // });
-    
-    // For now, simulate the export process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate API call to Microsoft Graph
-    const success = await mockMicrosoftGraphAPI(cards);
-    
-    if (!success) {
-      throw new Error('Failed to export to Excel/OneDrive');
-    }
-    
-    return true;
+    return success;
   } catch (error) {
     console.error('Excel export error:', error);
     throw error;
   }
 };
 
-// Mock Google Sheets API call
-const mockGoogleSheetsAPI = async (cards: BusinessCard[]): Promise<boolean> => {
-  // Simulate API processing time
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Simulate 90% success rate
-  return Math.random() > 0.1;
-};
-
-// Mock Microsoft Graph API call
-const mockMicrosoftGraphAPI = async (cards: BusinessCard[]): Promise<boolean> => {
-  // Simulate API processing time
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Simulate 90% success rate
-  return Math.random() > 0.1;
-};
-
-// Connection status management
-let googleSheetsConnected = false;
-let excelConnected = false;
-
 // Check if Google Sheets is connected
-export const isGoogleSheetsConnected = (): boolean => {
-  return googleSheetsConnected;
+export const isGoogleSheetsConnected = async (): Promise<boolean> => {
+  try {
+    const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
+    if (!tokenData) return false;
+    
+    const { access_token, expires_at } = JSON.parse(tokenData);
+    
+    // Check if token is expired
+    if (expires_at && Date.now() > expires_at) {
+      await AsyncStorage.removeItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error checking Google Sheets connection:', error);
+    return false;
+  }
 };
 
 // Check if Excel/OneDrive is connected
-export const isExcelConnected = (): boolean => {
-  return excelConnected;
-};
-
-// Connect to Google Sheets with OAuth
-export const connectGoogleSheets = async (): Promise<boolean> => {
+export const isExcelConnected = async (): Promise<boolean> => {
   try {
-    console.log('Initiating Google Sheets connection...');
+    const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
+    if (!tokenData) return false;
     
-    // In a real app, this would:
-    // 1. Open OAuth flow for Google Sheets API
-    // 2. Request necessary scopes (https://www.googleapis.com/auth/spreadsheets)
-    // 3. Store access/refresh tokens securely
-    // 4. Verify connection by making a test API call
+    const { access_token, expires_at } = JSON.parse(tokenData);
     
-    // Simulate OAuth flow
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate connection success (95% success rate)
-    const success = Math.random() > 0.05;
-    
-    if (success) {
-      googleSheetsConnected = true;
-      console.log('Google Sheets connected successfully');
-    } else {
-      console.log('Google Sheets connection failed');
+    // Check if token is expired
+    if (expires_at && Date.now() > expires_at) {
+      await AsyncStorage.removeItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
+      return false;
     }
     
-    return success;
+    return true;
+  } catch (error) {
+    console.error('Error checking Excel connection:', error);
+    return false;
+  }
+};
+
+// Connect to Google Sheets with real OAuth
+export const connectGoogleSheets = async (): Promise<boolean> => {
+  try {
+    console.log('Initiating Google Sheets OAuth...');
+    
+    // Step 1: Initiate OAuth flow
+    const code = await initiateGoogleOAuth();
+    if (!code) {
+      throw new Error('Failed to get authorization code from Google');
+    }
+    
+    // Step 2: Exchange code for access token
+    const tokenResponse = await exchangeGoogleCodeForToken(code);
+    
+    // Step 3: Store token securely
+    const tokenData = {
+      access_token: tokenResponse.access_token,
+      refresh_token: tokenResponse.refresh_token,
+      expires_at: Date.now() + (tokenResponse.expires_in * 1000),
+    };
+    
+    await AsyncStorage.setItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN, JSON.stringify(tokenData));
+    
+    console.log('Google Sheets connected successfully');
+    return true;
   } catch (error) {
     console.error('Google Sheets connection error:', error);
     return false;
   }
 };
 
-// Connect to Excel/OneDrive with OAuth
+// Connect to Excel/OneDrive with real OAuth
 export const connectExcel = async (): Promise<boolean> => {
   try {
-    console.log('Initiating Excel/OneDrive connection...');
+    console.log('Initiating Excel/OneDrive OAuth...');
     
-    // In a real app, this would:
-    // 1. Open OAuth flow for Microsoft Graph API
-    // 2. Request necessary scopes (Files.ReadWrite, Sites.ReadWrite.All)
-    // 3. Store access/refresh tokens securely
-    // 4. Verify connection by making a test API call
-    
-    // Simulate OAuth flow
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Simulate connection success (95% success rate)
-    const success = Math.random() > 0.05;
-    
-    if (success) {
-      excelConnected = true;
-      console.log('Excel/OneDrive connected successfully');
-    } else {
-      console.log('Excel/OneDrive connection failed');
+    // Step 1: Initiate OAuth flow
+    const code = await initiateMicrosoftOAuth();
+    if (!code) {
+      throw new Error('Failed to get authorization code from Microsoft');
     }
     
-    return success;
+    // Step 2: Exchange code for access token
+    const tokenResponse = await exchangeMicrosoftCodeForToken(code);
+    
+    // Step 3: Store token securely
+    const tokenData = {
+      access_token: tokenResponse.access_token,
+      refresh_token: tokenResponse.refresh_token,
+      expires_at: Date.now() + (tokenResponse.expires_in * 1000),
+    };
+    
+    await AsyncStorage.setItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN, JSON.stringify(tokenData));
+    
+    console.log('Excel/OneDrive connected successfully');
+    return true;
   } catch (error) {
     console.error('Excel connection error:', error);
     return false;
@@ -284,15 +436,23 @@ export const connectExcel = async (): Promise<boolean> => {
 };
 
 // Disconnect from Google Sheets
-export const disconnectGoogleSheets = (): void => {
-  googleSheetsConnected = false;
-  console.log('Google Sheets disconnected');
+export const disconnectGoogleSheets = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
+    console.log('Google Sheets disconnected');
+  } catch (error) {
+    console.error('Error disconnecting Google Sheets:', error);
+  }
 };
 
 // Disconnect from Excel/OneDrive
-export const disconnectExcel = (): void => {
-  excelConnected = false;
-  console.log('Excel/OneDrive disconnected');
+export const disconnectExcel = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
+    console.log('Excel/OneDrive disconnected');
+  } catch (error) {
+    console.error('Error disconnecting Excel:', error);
+  }
 };
 
 // Export CSV with proper file download and MIME type

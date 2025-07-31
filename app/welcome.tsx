@@ -8,7 +8,7 @@ import {
   TouchableOpacity
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ScanLine, Zap, Shield, Users, Star, Crown } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import { useUserStore } from '@/store/userStore';
@@ -34,9 +34,9 @@ export default function WelcomeScreen() {
           <View style={styles.logo}>
             <Text style={styles.logoText}>📱</Text>
           </View>
-          <Text style={styles.appName}>Biztomate Scanner</Text>
+          <Text style={styles.appName}>Biztomate</Text>
           <View style={styles.premiumBadge}>
-            <Crown size={16} color="white" />
+            <Ionicons name="diamond" size={16} color="white" />
             <Text style={styles.premiumText}>AI Powered</Text>
           </View>
         </View>
@@ -48,7 +48,7 @@ export default function WelcomeScreen() {
 
       <View style={styles.trialBanner}>
         <View style={styles.trialHeader}>
-          <Star size={24} color="#FFD700" />
+          <Ionicons name="star" size={24} color="#FFD700" />
           <Text style={styles.trialTitle}>Start Your FREE 3-Day Trial</Text>
         </View>
         <Text style={styles.trialSubtitle}>
@@ -57,11 +57,11 @@ export default function WelcomeScreen() {
       </View>
       
       <View style={styles.featuresContainer}>
-        <Text style={styles.featuresTitle}>Why Choose Biztomate Scanner?</Text>
+        <Text style={styles.featuresTitle}>Why Choose Biztomate?</Text>
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <ScanLine size={28} color={Colors.light.primary} />
+            <Ionicons name="scan" size={28} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Smart OCR Technology</Text>
@@ -73,7 +73,7 @@ export default function WelcomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Zap size={28} color={Colors.light.primary} />
+            <Ionicons name="flash" size={28} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Instant Export</Text>
@@ -85,7 +85,7 @@ export default function WelcomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Shield size={28} color={Colors.light.primary} />
+            <Ionicons name="shield-checkmark" size={28} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Secure & Private</Text>
@@ -97,7 +97,7 @@ export default function WelcomeScreen() {
         
         <View style={styles.feature}>
           <View style={styles.featureIcon}>
-            <Users size={28} color={Colors.light.primary} />
+            <Ionicons name="people" size={28} color={Colors.light.primary} />
           </View>
           <View style={styles.featureContent}>
             <Text style={styles.featureTitle}>Team Collaboration</Text>
@@ -134,11 +134,10 @@ export default function WelcomeScreen() {
 
       <View style={styles.qrSection}>
         <Text style={styles.qrTitle}>Share with Friends</Text>
-        <Image 
-          source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://biztomatescanner.app/welcome' }}
+        <Ionicons name="image" source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://biztomatescanner.app/welcome' }}
           style={styles.qrCode}
         />
-        <Text style={styles.qrDescription}>Scan to download Biztomate Scanner</Text>
+        <Text style={styles.qrDescription}>Scan to download Biztomate</Text>
       </View>
       
       <View style={styles.buttonContainer}>

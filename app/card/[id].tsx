@@ -11,16 +11,7 @@ import {
   Linking
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { 
-  Edit, 
-  Trash2, 
-  Share2, 
-  Mail, 
-  Phone, 
-  Globe, 
-  MapPin, 
-  FileText 
-} from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import Button from '@/components/Button';
@@ -124,14 +115,13 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         {card.imageUri ? (
-          <Image 
-            source={{ uri: card.imageUri }} 
+          <Ionicons name="image" source={{ uri: card.imageUri }} 
             style={styles.cardImage}
             resizeMode="cover"
           />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <FileText size={48} color={Colors.light.textSecondary} />
+            <Ionicons name="document-text" size={48} color={Colors.light.textSecondary} />
           </View>
         )}
         
@@ -140,21 +130,21 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
             style={styles.actionButton}
             onPress={handleEdit}
           >
-            <Edit size={20} color={Colors.light.primary} />
+            <Ionicons name="create" size={20} color={Colors.light.primary} />
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.actionButton}
             onPress={handleShare}
           >
-            <Share2 size={20} color={Colors.light.primary} />
+            <Ionicons name="share" size={20} color={Colors.light.primary} />
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.actionButton}
             onPress={handleDelete}
           >
-            <Trash2 size={20} color={Colors.light.error} />
+            <Ionicons name="trash" size={20} color={Colors.light.error} />
           </TouchableOpacity>
         </View>
       </View>
@@ -172,7 +162,7 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
               style={styles.contactButton}
               onPress={handleEmail}
             >
-              <Mail size={20} color="white" />
+              <Ionicons name="mail" size={20} color="white" />
               <Text style={styles.contactButtonText}>Email</Text>
             </TouchableOpacity>
           )}
@@ -182,7 +172,7 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
               style={styles.contactButton}
               onPress={handleCall}
             >
-              <Phone size={20} color="white" />
+              <Ionicons name="call" size={20} color="white" />
               <Text style={styles.contactButtonText}>Call</Text>
             </TouchableOpacity>
           )}
@@ -192,7 +182,7 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
               style={styles.contactButton}
               onPress={handleWebsite}
             >
-              <Globe size={20} color="white" />
+              <Ionicons name="globe" size={20} color="white" />
               <Text style={styles.contactButtonText}>Website</Text>
             </TouchableOpacity>
           )}
@@ -202,7 +192,7 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
               style={styles.contactButton}
               onPress={handleAddress}
             >
-              <MapPin size={20} color="white" />
+              <Ionicons name="location" size={20} color="white" />
               <Text style={styles.contactButtonText}>Map</Text>
             </TouchableOpacity>
           )}

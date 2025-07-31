@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SubscriptionPlan } from '@/types';
 import Colors from '@/constants/colors';
-import { Check } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface SubscriptionCardProps {
   plan: SubscriptionPlan;
@@ -38,7 +38,7 @@ export default function SubscriptionCard({
       <View style={styles.featuresContainer}>
         {plan.features.map((feature, index) => (
           <View key={index} style={styles.featureRow}>
-            <Check size={16} color={Colors.light.primary} />
+            <Ionicons name="checkmark" size={16} color={Colors.light.primary} />
             <Text style={styles.featureText}>{feature}</Text>
           </View>
         ))}
