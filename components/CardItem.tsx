@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { BusinessCard } from '@/types';
 import Colors from '@/constants/colors';
-import { Mail, Phone, Globe, MapPin, ChevronRight } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface CardItemProps {
   card: BusinessCard;
@@ -26,7 +26,7 @@ export default function CardItem({ card, onPress }: CardItemProps) {
             <Text style={styles.name}>{card.name}</Text>
             {card.title && <Text style={styles.title}>{card.title}</Text>}
           </View>
-          <ChevronRight size={20} color={Colors.light.textSecondary} />
+          <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
         </View>
         
         {card.company && (
@@ -36,28 +36,28 @@ export default function CardItem({ card, onPress }: CardItemProps) {
         <View style={styles.detailsContainer}>
           {card.email && (
             <View style={styles.detailRow}>
-              <Mail size={16} color={Colors.light.primary} />
+              <Ionicons name="mail" size={16} color={Colors.light.primary} />
               <Text style={styles.detailText} numberOfLines={1}>{card.email}</Text>
             </View>
           )}
           
           {card.phone && (
             <View style={styles.detailRow}>
-              <Phone size={16} color={Colors.light.primary} />
+              <Ionicons name="call" size={16} color={Colors.light.primary} />
               <Text style={styles.detailText}>{card.phone}</Text>
             </View>
           )}
           
           {card.website && (
             <View style={styles.detailRow}>
-              <Globe size={16} color={Colors.light.primary} />
+              <Ionicons name="globe" size={16} color={Colors.light.primary} />
               <Text style={styles.detailText} numberOfLines={1}>{card.website}</Text>
             </View>
           )}
           
           {card.address && (
             <View style={styles.detailRow}>
-              <MapPin size={16} color={Colors.light.primary} />
+              <Ionicons name="location" size={16} color={Colors.light.primary} />
               <Text style={styles.detailText} numberOfLines={1}>{card.address}</Text>
             </View>
           )}
@@ -67,8 +67,7 @@ export default function CardItem({ card, onPress }: CardItemProps) {
       </View>
       
       {card.imageUri && (
-        <Image 
-          source={{ uri: card.imageUri }} 
+        <Ionicons name="image" source={{ uri: card.imageUri }} 
           style={styles.thumbnail}
           resizeMode="cover"
         />

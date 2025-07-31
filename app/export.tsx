@@ -9,14 +9,7 @@ import {
   Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { 
-  FileText, 
-  FileSpreadsheet, 
-  Download, 
-  Check, 
-  Link,
-  ExternalLink
-} from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import { useUserStore } from '@/store/userStore';
@@ -40,8 +33,20 @@ export default function ExportScreen() {
   const [exportType, setExportType] = useState<'csv' | 'sheets' | 'excel'>('csv');
   
   const isPremiumUser = user.subscriptionPlan !== 'free';
-  const [googleConnected, setGoogleConnected] = useState(isGoogleSheetsConnected());
-  const [excelConnected, setExcelConnected] = useState(isExcelConnected());
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [excelConnected, setExcelConnected] = useState(false);
+  
+  // Check connection status on component mount
+  React.useEffect(() => {
+    const checkConnections = async () => {
+      const googleStatus = await isGoogleSheetsConnected();
+      const excelStatus = await isExcelConnected();
+      setGoogleConnected(googleStatus);
+      setExcelConnected(excelStatus);
+    };
+    
+    checkConnections();
+  }, []);
   
   const handleConnect = async (type: 'sheets' | 'excel') => {
     setIsConnecting(true);
@@ -173,11 +178,11 @@ export default function ExportScreen() {
           onPress={() => setExportType('csv')}
         >
           <View style={styles.optionHeader}>
-            <FileText size={24} color={Colors.light.primary} />
+            <Ionicons name="document-text" size={24} color={Colors.light.primary} />
             <Text style={styles.optionTitle}>CSV File</Text>
             {exportType === 'csv' && (
               <View style={styles.checkmark}>
-                <Check size={16} color="white" />
+                <Ionicons name="checkmark" size={16} color="white" />
               </View>
             )}
           </View>
@@ -200,13 +205,13 @@ export default function ExportScreen() {
           onPress={() => isPremiumUser && setExportType('sheets')}
         >
           <View style={styles.optionHeader}>
-            <FileSpreadsheet size={24} color={isPremiumUser ? Colors.light.primary : Colors.light.disabled} />
+            <Ionicons name="document-text" size={24} color={isPremiumUser ? Colors.light.primary : Colors.light.disabled} />
             <Text style={[styles.optionTitle, !isPremiumUser && styles.disabledText]}>
               Google Sheets
             </Text>
             {exportType === 'sheets' && isPremiumUser && (
               <View style={styles.checkmark}>
-                <Check size={16} color="white" />
+                <Ionicons name="checkmark" size={16} color="white" />
               </View>
             )}
           </View>
@@ -226,7 +231,7 @@ export default function ExportScreen() {
                     onPress={() => handleConnect('sheets')}
                     disabled={isConnecting}
                   >
-                    <Link size={14} color={Colors.light.primary} />
+                    <Ionicons name="link" size={14} color={Colors.light.primary} />
                     <Text style={styles.connectText}>
                       {isConnecting ? 'Connecting...' : 'Connect Google'}
                     </Text>
@@ -250,13 +255,13 @@ export default function ExportScreen() {
           onPress={() => isPremiumUser && setExportType('excel')}
         >
           <View style={styles.optionHeader}>
-            <FileSpreadsheet size={24} color={isPremiumUser ? Colors.light.primary : Colors.light.disabled} />
+            <Ionicons name="document-text" size={24} color={isPremiumUser ? Colors.light.primary : Colors.light.disabled} />
             <Text style={[styles.optionTitle, !isPremiumUser && styles.disabledText]}>
               Excel/OneDrive
             </Text>
             {exportType === 'excel' && isPremiumUser && (
               <View style={styles.checkmark}>
-                <Check size={16} color="white" />
+                <Ionicons name="checkmark" size={16} color="white" />
               </View>
             )}
           </View>
@@ -276,7 +281,7 @@ export default function ExportScreen() {
                     onPress={() => handleConnect('excel')}
                     disabled={isConnecting}
                   >
-                    <Link size={14} color={Colors.light.primary} />
+                    <Ionicons name="link" size={14} color={Colors.light.primary} />
                     <Text style={styles.connectText}>
                       {isConnecting ? 'Connecting...' : 'Connect Microsoft'}
                     </Text>
@@ -320,7 +325,7 @@ export default function ExportScreen() {
           variant="primary"
           loading={isExporting}
           disabled={isExporting || cards.length === 0}
-          icon={<Download size={20} color="white" style={{ marginRight: 8 }} />}
+          icon={<Ionicons name="download" size={20} color="white" style={{ marginRight: 8 }} />}
           style={styles.exportButton}
         />
         

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, X } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import Button from '@/components/Button';
@@ -139,8 +139,7 @@ export default function EditCardScreen() {
       <View style={styles.imageSection}>
         {formData.imageUri ? (
           <View style={styles.imageContainer}>
-            <Image 
-              source={{ uri: formData.imageUri }} 
+            <Ionicons name="image" source={{ uri: formData.imageUri }} 
               style={styles.cardImage}
               resizeMode="cover"
             />
@@ -148,7 +147,7 @@ export default function EditCardScreen() {
               style={styles.removeImageButton}
               onPress={handleRemoveImage}
             >
-              <X size={20} color="white" />
+              <Ionicons name="close" size={20} color="white" />
             </TouchableOpacity>
           </View>
         ) : (
@@ -156,7 +155,7 @@ export default function EditCardScreen() {
             style={styles.imagePlaceholder}
             onPress={handlePickImage}
           >
-            <Camera size={32} color={Colors.light.primary} />
+            <Ionicons name="camera" size={32} color={Colors.light.primary} />
             <Text style={styles.imagePlaceholderText}>Add Card Image</Text>
           </TouchableOpacity>
         )}

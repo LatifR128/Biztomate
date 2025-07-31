@@ -9,7 +9,7 @@ import {
   RefreshControl
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Search, Plus, FileText, Share2 } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import { BusinessCard } from '@/types';
@@ -54,7 +54,7 @@ export default function HistoryScreen() {
         <EmptyState
           title="No Results Found"
           message="Try adjusting your search or scan new cards."
-          icon={<Search size={48} color={Colors.light.textSecondary} />}
+          icon={<Ionicons name="search" size={48} color={Colors.light.textSecondary} />}
         />
       );
     }
@@ -65,7 +65,7 @@ export default function HistoryScreen() {
         message="Start scanning business cards to build your collection."
         actionLabel="Scan a Card"
         onAction={handleScan}
-        icon={<Plus size={48} color={Colors.light.primary} />}
+        icon={<Ionicons name="add" size={48} color={Colors.light.primary} />}
       />
     );
   };
@@ -76,7 +76,7 @@ export default function HistoryScreen() {
       
       {cards.length > 0 && (
         <View style={styles.searchContainer}>
-          <Search size={20} color={Colors.light.textSecondary} />
+          <Ionicons name="search" size={20} color={Colors.light.textSecondary} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search cards..."
@@ -116,7 +116,7 @@ export default function HistoryScreen() {
             title="Export Cards"
             onPress={handleExport}
             variant="primary"
-            icon={<FileText size={20} color="white" style={{ marginRight: 8 }} />}
+            icon={<Ionicons name="document-text" size={20} color="white" style={{ marginRight: 8 }} />}
           />
           
           <View style={styles.brandingContainer}>
