@@ -71,7 +71,6 @@ web-build/
 # Native folders for EAS Build
 /android/
 /ios/
-!ios/Biztomate/GoogleService-Info.plist
 
 # Native
 *.orig.*

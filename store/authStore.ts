@@ -14,10 +14,10 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { signInWithGoogle as signInWithGoogleOAuth, signOutFromOAuth, OAuthUser, AuthResult } from '@/lib/oauthAuth';
 import { userDataStorage, UserData } from '@/utils/userDataStorage';
-import { sendCustomPasswordResetEmail } from '@/lib/passwordReset';
+
 
 interface AuthState {
   user: User | null;
@@ -320,8 +320,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (!auth) throw new Error('Firebase not initialized');
       
-      // Use custom password reset function with proper error handling
-      await sendCustomPasswordResetEmail(auth, email);
+      // Use standard Firebase password reset
+      await sendPasswordResetEmail(auth, email);
       
       set({ isLoading: false, error: null });
     } catch (error: any) {
