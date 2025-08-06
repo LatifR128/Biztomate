@@ -26,8 +26,11 @@ const imageToBase64 = async (uri: string): Promise<string> => {
 // Process business card using AI
 export const processBusinessCard = async (imageUri: string): Promise<Partial<BusinessCard>> => {
   try {
+    console.log('Starting OCR processing for image:', imageUri);
+    
     // Convert image to base64
     const base64Image = await imageToBase64(imageUri);
+    console.log('Image converted to base64, length:', base64Image.length);
     
     // Prepare the AI request
     const messages = [
@@ -52,7 +55,8 @@ Rules:
 - If a field is not present or unclear, set it to an empty string ""
 - Do not include any text before or after the JSON
 - Ensure the JSON is properly formatted and valid
-- Do not use null values, use empty strings instead`
+- Do not use null values, use empty strings instead
+- Be very careful with name extraction - only extract if it's clearly a person's name`
       },
       {
         role: 'user' as const,
@@ -69,6 +73,8 @@ Rules:
       }
     ];
 
+    console.log('Making AI API request...');
+    
     // Make request to AI API
     const response = await fetch('https://toolkit.rork.com/text/llm/', {
       method: 'POST',
@@ -79,7 +85,8 @@ Rules:
     });
 
     if (!response.ok) {
-      console.error(`AI API request failed: ${response.status}`);
+      console.error(`AI API request failed: ${response.status} - ${response.statusText}`);
+      console.log('Using fallback data due to API failure');
       return getFallbackData();
     }
 
@@ -87,8 +94,11 @@ Rules:
     
     if (!result.completion) {
       console.error('No completion in AI response');
+      console.log('Using fallback data due to missing completion');
       return getFallbackData();
     }
+    
+    console.log('AI response received, processing...');
     
     // Clean the response - remove any markdown formatting or extra text
     let cleanedResponse = result.completion.trim();
@@ -103,6 +113,8 @@ Rules:
     
     if (jsonStart === -1 || jsonEnd === -1) {
       console.error('No JSON object found in AI response');
+      console.log('Raw AI response:', result.completion);
+      console.log('Using fallback data due to invalid JSON');
       return getFallbackData();
     }
     
@@ -111,6 +123,7 @@ Rules:
     // Parse the AI response
     try {
       const extractedData = JSON.parse(jsonString);
+      console.log('Successfully parsed AI response:', extractedData);
       
       // Validate and clean the extracted data
       const cleanedData: Partial<BusinessCard> = {};
@@ -146,8 +159,11 @@ Rules:
         cleanedData.address = extractedData.address.trim();
       }
       
+      console.log('Cleaned data:', cleanedData);
+      
       // If we got at least a name, return the data, otherwise use fallback
-      if (cleanedData.name) {
+      if (cleanedData.name && cleanedData.name !== 'Unknown Contact') {
+        console.log('Returning successfully extracted data');
         return cleanedData;
       } else {
         console.log('No valid name extracted, using fallback data');
@@ -158,12 +174,14 @@ Rules:
       console.error('Error parsing AI response as JSON:', parseError);
       console.error('Raw AI response:', result.completion);
       console.error('Cleaned JSON string:', jsonString);
+      console.log('Using fallback data due to JSON parse error');
       // Fallback to mock data if AI response is invalid
       return getFallbackData();
     }
     
   } catch (error) {
     console.error('Error processing business card:', error);
+    console.log('Using fallback data due to processing error');
     // Return fallback data in case of any error
     return getFallbackData();
   }
@@ -171,39 +189,21 @@ Rules:
 
 // Fallback mock data for when AI processing fails
 const getFallbackData = (): Partial<BusinessCard> => {
-  const fallbackOptions = [
-    {
-      name: "John Smith",
-      title: "Sales Director",
-      company: "Acme Corporation",
-      email: "john.smith@acme.com",
-      phone: "+1 (555) 123-4567",
-      website: "www.acme.com",
-      address: "123 Business Ave, Suite 100, San Francisco, CA 94107"
-    },
-    {
-      name: "Sarah Johnson",
-      title: "Marketing Manager",
-      company: "Tech Solutions Inc",
-      email: "sarah.j@techsolutions.com",
-      phone: "+1 (555) 987-6543",
-      website: "www.techsolutions.com",
-      address: "456 Innovation Dr, Austin, TX 78701"
-    },
-    {
-      name: "Michael Chen",
-      title: "Product Designer",
-      company: "Creative Studio",
-      email: "m.chen@creativestudio.com",
-      phone: "+1 (555) 456-7890",
-      website: "www.creativestudio.com",
-      address: "789 Design Blvd, New York, NY 10001"
-    }
-  ];
+  // Generate unique fallback data with timestamp to avoid duplicates
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
   
-  // Return a random fallback option
-  const randomIndex = Math.floor(Math.random() * fallbackOptions.length);
-  return fallbackOptions[randomIndex];
+  return {
+    name: `Unknown Contact ${randomSuffix}`,
+    title: "",
+    company: "",
+    email: "",
+    phone: "",
+    website: "",
+    address: "",
+    // Add a unique identifier to prevent false duplicates
+    _fallbackId: `${timestamp}_${randomSuffix}`
+  };
 };
 
 // This would be a real implementation using AI to extract fields

@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { OAUTH_CONFIG, OAUTH_STORAGE_KEYS, API_ENDPOINTS } from '@/constants/oauth';
+import { OAUTH_CONFIG, OAUTH_STORAGE_KEYS, API_ENDPOINTS, isOAuthConfigured, getOAuthErrorMessage } from '@/constants/oauth';
 
 // Convert cards to CSV format with proper field mapping
 export const cardsToCSV = (cards: BusinessCard[]): string => {
@@ -84,6 +84,11 @@ const downloadCSVFile = (csvContent: string, filename: string = 'business_cards.
 // Google OAuth Flow
 const initiateGoogleOAuth = async (): Promise<string | null> => {
   try {
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error('Google OAuth is not configured. Please contact support.');
+    }
+
     const authUrl = `${OAUTH_CONFIG.GOOGLE.AUTH_URL}?` +
       `client_id=${OAUTH_CONFIG.GOOGLE.CLIENT_ID}` +
       `&redirect_uri=${encodeURIComponent(OAUTH_CONFIG.GOOGLE.REDIRECT_URI)}` +
@@ -138,6 +143,11 @@ const exchangeGoogleCodeForToken = async (code: string): Promise<any> => {
 // Microsoft OAuth Flow
 const initiateMicrosoftOAuth = async (): Promise<string | null> => {
   try {
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error('Microsoft OAuth is not configured. Please contact support.');
+    }
+
     const authUrl = `${OAUTH_CONFIG.MICROSOFT.AUTH_URL}?` +
       `client_id=${OAUTH_CONFIG.MICROSOFT.CLIENT_ID}` +
       `&response_type=code` +
@@ -293,6 +303,11 @@ export const exportToGoogleSheets = async (cards: BusinessCard[]): Promise<boole
   try {
     console.log('Initiating Google Sheets export for', cards.length, 'cards');
     
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error(getOAuthErrorMessage('google'));
+    }
+    
     const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
     if (!tokenData) {
       throw new Error('Google Sheets not connected. Please connect your Google account first.');
@@ -315,6 +330,11 @@ export const exportToExcel = async (cards: BusinessCard[]): Promise<boolean> => 
   try {
     console.log('Initiating Excel/OneDrive export for', cards.length, 'cards');
     
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error(getOAuthErrorMessage('microsoft'));
+    }
+    
     const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
     if (!tokenData) {
       throw new Error('Excel/OneDrive not connected. Please connect your Microsoft account first.');
@@ -334,6 +354,11 @@ export const exportToExcel = async (cards: BusinessCard[]): Promise<boolean> => 
 // Check if Google Sheets is connected
 export const isGoogleSheetsConnected = async (): Promise<boolean> => {
   try {
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      return false;
+    }
+    
     const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.GOOGLE_TOKEN);
     if (!tokenData) return false;
     
@@ -355,6 +380,11 @@ export const isGoogleSheetsConnected = async (): Promise<boolean> => {
 // Check if Excel/OneDrive is connected
 export const isExcelConnected = async (): Promise<boolean> => {
   try {
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      return false;
+    }
+    
     const tokenData = await AsyncStorage.getItem(OAUTH_STORAGE_KEYS.MICROSOFT_TOKEN);
     if (!tokenData) return false;
     
@@ -377,6 +407,11 @@ export const isExcelConnected = async (): Promise<boolean> => {
 export const connectGoogleSheets = async (): Promise<boolean> => {
   try {
     console.log('Initiating Google Sheets OAuth...');
+    
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error(getOAuthErrorMessage('google'));
+    }
     
     // Step 1: Initiate OAuth flow
     const code = await initiateGoogleOAuth();
@@ -408,6 +443,11 @@ export const connectGoogleSheets = async (): Promise<boolean> => {
 export const connectExcel = async (): Promise<boolean> => {
   try {
     console.log('Initiating Excel/OneDrive OAuth...');
+    
+    // Check if OAuth is configured
+    if (!isOAuthConfigured()) {
+      throw new Error(getOAuthErrorMessage('microsoft'));
+    }
     
     // Step 1: Initiate OAuth flow
     const code = await initiateMicrosoftOAuth();

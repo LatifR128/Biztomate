@@ -7,12 +7,15 @@ import {
   disconnectInAppPurchases 
 } from '@/lib/inAppPurchases';
 import { SUBSCRIPTION_PLANS } from '@/constants/subscriptions';
+import Colors from '@/constants/colors';
 
 export default function InAppPurchaseTest() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [currentPlan, setCurrentPlan] = useState('');
+  const [trialDaysLeft, setTrialDaysLeft] = useState(0);
 
   useEffect(() => {
     initializeTest();
@@ -55,12 +58,12 @@ export default function InAppPurchaseTest() {
     }
   };
 
-  const testPurchase = async (productId: string) => {
+  const handlePurchase = async (product: any) => {
     try {
       setLoading(true);
-      setStatus(`Testing purchase for ${productId}...`);
+      setStatus(`Testing purchase for ${product.title}...`);
       
-      const result = await purchaseSubscription(productId);
+      const result = await purchaseSubscription(product.id);
       
       if (result.success) {
         Alert.alert('Success', `Purchase successful! Transaction: ${result.transactionId}`);
@@ -83,25 +86,34 @@ export default function InAppPurchaseTest() {
   const testAllProducts = async () => {
     for (const plan of SUBSCRIPTION_PLANS) {
       console.log(`Testing product: ${plan.productId}`);
-      await testPurchase(plan.productId);
+      await handlePurchase(plan);
       await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between tests
     }
   };
 
   return (
     <ScrollView style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 20 }}>
+      <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 20, color: Colors.light.text }}>
         In-App Purchase Test
+      </Text>
+      <Text style={{ fontSize: 16, marginBottom: 10, color: Colors.light.text }}>
+        Test subscription purchases
+      </Text>
+      <Text style={{ fontSize: 14, color: Colors.light.textSecondary }}>
+        Current Plan: {currentPlan}
+      </Text>
+      <Text style={{ fontSize: 14, color: Colors.light.textSecondary }}>
+        Trial Days Left: {trialDaysLeft}
       </Text>
       
       <View style={{ marginBottom: 20 }}>
-        <Text style={{ fontSize: 16, marginBottom: 10 }}>
+        <Text style={{ fontSize: 16, marginBottom: 10, color: Colors.light.text }}>
           Status: {status}
         </Text>
-        <Text style={{ fontSize: 14, color: 'gray' }}>
+        <Text style={{ fontSize: 14, color: Colors.light.textSecondary }}>
           Initialized: {isInitialized ? 'Yes' : 'No'}
         </Text>
-        <Text style={{ fontSize: 14, color: 'gray' }}>
+        <Text style={{ fontSize: 14, color: Colors.light.textSecondary }}>
           Products Found: {products.length}
         </Text>
       </View>
@@ -139,29 +151,29 @@ export default function InAppPurchaseTest() {
       </TouchableOpacity>
 
       <View style={{ marginTop: 20 }}>
-        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>
+        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: Colors.light.text }}>
           Available Products:
         </Text>
         {products.map((product, index) => (
-          <View key={index} style={{ marginBottom: 10, padding: 10, backgroundColor: '#f0f0f0', borderRadius: 8 }}>
-            <Text style={{ fontWeight: 'bold' }}>{product.title}</Text>
-            <Text>{product.description}</Text>
-            <Text style={{ color: 'green' }}>{product.price}</Text>
-            <Text style={{ fontSize: 12, color: 'gray' }}>ID: {product.id}</Text>
+          <View key={index} style={{ marginBottom: 10, padding: 10, backgroundColor: Colors.light.card, borderRadius: 8 }}>
+            <Text style={{ fontWeight: 'bold', color: Colors.light.text }}>{product.title}</Text>
+            <Text style={{ color: Colors.light.textSecondary }}>{product.description}</Text>
+            <Text style={{ color: Colors.light.success, fontSize: 14 }}>{product.price}</Text>
+            <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>ID: {product.id}</Text>
             
             <TouchableOpacity
-              style={{
-                backgroundColor: '#FF9500',
-                padding: 8,
-                borderRadius: 6,
-                marginTop: 5,
-                opacity: loading ? 0.5 : 1
+              style={{ 
+                backgroundColor: Colors.light.primary, 
+                padding: 10, 
+                borderRadius: 8, 
+                marginTop: 8,
+                alignItems: 'center'
               }}
-              onPress={() => testPurchase(product.id)}
+              onPress={() => handlePurchase(product)}
               disabled={loading}
             >
-              <Text style={{ color: 'white', textAlign: 'center', fontSize: 12 }}>
-                Test Purchase
+              <Text style={{ color: Colors.light.background, textAlign: 'center', fontWeight: 'bold' }}>
+                {loading ? 'Processing...' : 'Purchase'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -169,12 +181,12 @@ export default function InAppPurchaseTest() {
       </View>
 
       <View style={{ marginTop: 20 }}>
-        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>
+        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: Colors.light.text }}>
           Expected Products:
         </Text>
         {SUBSCRIPTION_PLANS.map((plan, index) => (
           <View key={index} style={{ marginBottom: 5, padding: 5 }}>
-            <Text style={{ fontSize: 14 }}>
+            <Text style={{ fontSize: 14, color: Colors.light.textSecondary }}>
               {plan.name}: {plan.productId}
             </Text>
           </View>

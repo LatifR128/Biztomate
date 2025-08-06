@@ -1,1 +1,39 @@
-{"cli": {"version": ">= 16.17.4", "appVersionSource": "remote"}, "build": {"development": {"developmentClient": true, "distribution": "internal"}, "preview": {"distribution": "internal"}, "production": {"ios": {"resourceClass": "m-medium"}}}, "submit": {"production": {}}}
+{
+  "cli": {
+    "version": ">= 16.17.4",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    },
+    "production": {
+      "ios": {
+        "resourceClass": "m-medium",
+        "distribution": "store"
+      },
+      "android": {
+        "resourceClass": "medium"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "latif@biztomate.com",
+        "ascAppId": "6748657473",
+        "appleTeamId": "PFW54M8N5A"
+      }
+    }
+  }
+}

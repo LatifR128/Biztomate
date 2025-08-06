@@ -5,63 +5,104 @@ import {
   StyleSheet, 
   ScrollView, 
   Alert,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import { SUBSCRIPTION_PLANS } from '@/constants/subscriptions';
 import { useUserStore } from '@/store/userStore';
 import { useReceiptStore } from '@/store/receiptStore';
-import { 
-  checkInAppPurchaseAvailability,
-  purchaseSubscription,
-  validateReceipt,
-  showPurchaseErrorAlert,
-  type PurchaseStatus 
-} from '@/lib/inAppPurchases';
+import { useIAP } from '@/hooks/useIAP';
 
 export default function PaymentScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { planId } = useLocalSearchParams<{ planId: string }>();
   const { updateSubscription } = useUserStore();
   const { addReceipt } = useReceiptStore();
   
   const [isProcessing, setIsProcessing] = useState(false);
-  const [purchaseStatus, setPurchaseStatus] = useState<PurchaseStatus | null>(null);
+  const [productAvailable, setProductAvailable] = useState(false);
 
   const selectedPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === planId);
 
-  // Check in-app purchase availability on component mount
+  // Use the new IAP hook
+  const {
+    isInitialized,
+    isLoading,
+    products,
+    error: iapError,
+    purchaseSubscription,
+    validateReceipt
+  } = useIAP();
+
+  // Check product availability when products load
   useEffect(() => {
-    const checkPurchases = async () => {
-      try {
-        const status = await checkInAppPurchaseAvailability();
-        setPurchaseStatus(status);
-        
-        if (!status.isAvailable) {
-          console.warn('In-app purchases not available');
-        }
-      } catch (error) {
-        console.error('Error checking in-app purchase availability:', error);
-        // Set a default status for fallback
-        setPurchaseStatus({
-          isAvailable: false,
-          canMakePayments: false,
-          products: [],
-        });
-      }
-    };
-    
-    checkPurchases();
-  }, []);
+    if (selectedPlan && products.length > 0) {
+      const product = products.find(p => p.id === selectedPlan.productId);
+      setProductAvailable(!!product);
+    }
+  }, [selectedPlan, products]);
   
   if (!selectedPlan) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>Invalid plan selected</Text>
-        <Button title="Go Back" onPress={() => router.back()} variant="primary" />
+        <Ionicons name="alert-circle" size={64} color={Colors.light.error} />
+        <Text style={styles.errorTitle}>Invalid Plan</Text>
+        <Text style={styles.errorText}>The selected plan could not be found.</Text>
+        <Button title="Go Back" onPress={() => router.back()} style={styles.backButton} />
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <Text style={styles.loadingText}>Loading payment options...</Text>
+      </View>
+    );
+  }
+
+  if (!isInitialized) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="card-outline" size={64} color={Colors.light.error} />
+        <Text style={styles.errorTitle}>Payment Unavailable</Text>
+        <Text style={styles.errorText}>
+          In-app purchases are not available at this time. Please try again later.
+        </Text>
+        <Button title="Go Back" onPress={() => router.back()} style={styles.backButton} />
+      </View>
+    );
+  }
+
+  if (iapError) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="close-circle" size={64} color={Colors.light.error} />
+        <Text style={styles.errorTitle}>Payment Error</Text>
+        <Text style={styles.errorText}>
+          {iapError}
+        </Text>
+        <Button title="Go Back" onPress={() => router.back()} style={styles.backButton} />
+      </View>
+    );
+  }
+
+  if (!productAvailable) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="close-circle" size={64} color={Colors.light.error} />
+        <Text style={styles.errorTitle}>Product Not Available</Text>
+        <Text style={styles.errorText}>
+          The selected subscription plan is not available in the App Store. Please try again later or contact support.
+        </Text>
+        <Button title="Go Back" onPress={() => router.back()} style={styles.backButton} />
       </View>
     );
   }
@@ -70,10 +111,34 @@ export default function PaymentScreen() {
     setIsProcessing(true);
     
     try {
+      // Double-check product availability before purchase
+      if (!isInitialized) {
+        Alert.alert(
+          'In-App Purchases Not Available',
+          'In-app purchases are not initialized. Please try again later.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      const product = products.find(p => p.id === selectedPlan.productId);
+      if (!product) {
+        Alert.alert(
+          'Product Not Available',
+          'This subscription plan is not available. Please try again later.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      console.log('Processing purchase for:', selectedPlan.name, 'Product ID:', selectedPlan.productId);
+      
       // Process in-app purchase
       const result = await purchaseSubscription(selectedPlan.productId);
       
       if (result.success && result.receiptData) {
+        console.log('Purchase successful, validating receipt...');
+        
         // Store the receipt
         addReceipt({
           productId: result.productId!,
@@ -99,136 +164,117 @@ export default function PaymentScreen() {
             [
               { 
                 text: "Continue", 
-                onPress: () => {
-                  router.dismissAll();
-                  router.replace('/(tabs)');
-                }
+                onPress: () => router.replace('/(tabs)') 
               }
             ]
           );
         } else {
-          // Receipt validation failed
-          showPurchaseErrorAlert(
-            validationResult.error || 'Receipt validation failed. Please contact support.'
+          console.error('Receipt validation failed:', validationResult);
+          Alert.alert(
+            "Purchase Completed",
+            "Your purchase was successful, but we couldn't validate the receipt. Please contact support if you have any issues.",
+            [
+              { 
+                text: "Continue", 
+                onPress: () => router.replace('/(tabs)') 
+              }
+            ]
           );
         }
       } else {
-        showPurchaseErrorAlert(result.error || 'Purchase failed');
+        console.error('Purchase failed:', result.error);
+        Alert.alert(
+          'Purchase Failed',
+          result.error || 'Purchase failed. Please try again.',
+          [{ text: 'OK' }]
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Purchase error:', error);
       Alert.alert(
-        "Purchase Error",
-        "An unexpected error occurred. Please try again later.",
-        [{ text: "OK" }]
+        'Purchase Error',
+        error.message || 'An unexpected error occurred. Please try again.',
+        [{ text: 'OK' }]
       );
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const handleCancel = () => {
+    router.back();
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Complete Your Purchase</Text>
-        <View style={styles.planSummary}>
-          <Text style={styles.planName}>{selectedPlan.name}</Text>
-          <Text style={styles.planPrice}>{selectedPlan.price}</Text>
-          <Text style={styles.planFeature}>
-            {selectedPlan.cardsLimit === Infinity ? 'Unlimited' : selectedPlan.cardsLimit} cards per year
+    <View style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.header}>
+          <Ionicons name="card" size={48} color={Colors.light.primary} />
+          <Text style={styles.title}>Complete Purchase</Text>
+          <Text style={styles.subtitle}>
+            You're about to subscribe to {selectedPlan.name}
           </Text>
         </View>
-      </View>
-      
-      <View style={styles.paymentMethods}>
-        <Text style={styles.sectionTitle}>Payment Method</Text>
-        
-        <View style={[
-          styles.paymentOption,
-          styles.selectedPaymentOption,
-          !purchaseStatus?.canMakePayments && styles.disabledPaymentOption
-        ]}>
-          <Ionicons 
-            name="card" 
-            size={24}
-            color={purchaseStatus?.canMakePayments ? Colors.light.primary : Colors.light.textSecondary} 
+
+        <View style={styles.planDetails}>
+          <View style={styles.planHeader}>
+            <Text style={styles.planName}>{selectedPlan.name}</Text>
+            <Text style={styles.planPrice}>{selectedPlan.price}</Text>
+          </View>
+          
+          <View style={styles.planFeatures}>
+            <Text style={styles.featuresTitle}>What's included:</Text>
+            {selectedPlan.features.map((feature, index) => (
+              <View key={index} style={styles.featureRow}>
+                <Ionicons name="checkmark" size={16} color={Colors.light.primary} />
+                <Text style={styles.featureText}>{feature}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.paymentInfo}>
+          <View style={styles.paymentHeader}>
+            <Ionicons name="shield-checkmark" size={20} color={Colors.light.primary} />
+            <Text style={styles.paymentTitle}>Secure App Store Purchase</Text>
+          </View>
+          <Text style={styles.paymentText}>
+            Your payment will be processed securely through the App Store using your Apple ID payment method. 
+            Your payment information is protected by Apple's security standards.
+          </Text>
+        </View>
+
+        <View style={styles.actionsContainer}>
+          <Button
+            title={isProcessing ? "Processing..." : "Subscribe Now"}
+            onPress={handlePurchase}
+            disabled={isProcessing}
+            style={styles.purchaseButton}
           />
-          <View style={styles.paymentOptionContent}>
-            <Text style={[
-              styles.paymentOptionText,
-              !purchaseStatus?.canMakePayments && styles.disabledText
-            ]}>
-              App Store Purchase
-            </Text>
-            {!purchaseStatus?.canMakePayments && (
-              <Text style={styles.unavailableText}>Not available</Text>
-            )}
-          </View>
-          <View style={styles.checkmark}>
-            <Ionicons name="checkmark" size={16} color="white" />
-          </View>
+          
+          <Button
+            title="Cancel"
+            onPress={handleCancel}
+            variant="secondary"
+            disabled={isProcessing}
+            style={styles.cancelButton}
+          />
         </View>
-      </View>
-      
-      <View style={styles.paymentInfo}>
-        <Text style={styles.paymentInfoTitle}>App Store Purchase</Text>
-        <Text style={styles.paymentInfoText}>
-          Your purchase will be processed securely through the App Store using your Apple ID payment method.
-        </Text>
-      </View>
-      
-      <View style={styles.securityInfo}>
-        <View style={styles.securityHeader}>
-          <Ionicons name="shield-checkmark" size={20} color={Colors.light.success} />
-          <Text style={styles.securityTitle}>Secure Payment</Text>
-        </View>
-        <Text style={styles.securityText}>
-          Your payment information is secure and managed by Apple. We never store your payment details.
-        </Text>
-        <View style={styles.securityFeatures}>
-          <View style={styles.securityFeature}>
-            <Ionicons name="lock-closed" size={16} color={Colors.light.success} />
-            <Text style={styles.securityFeatureText}>Apple ID secure payment</Text>
+
+        {isProcessing && (
+          <View style={styles.processingContainer}>
+            <ActivityIndicator size="small" color={Colors.light.primary} />
+            <Text style={styles.processingText}>Processing your purchase...</Text>
           </View>
-          <View style={styles.securityFeature}>
-            <Ionicons name="shield-checkmark" size={16} color={Colors.light.success} />
-            <Text style={styles.securityFeatureText}>App Store verified</Text>
-          </View>
-          <View style={styles.securityFeature}>
-            <Ionicons name="document-text" size={16} color={Colors.light.success} />
-            <Text style={styles.securityFeatureText}>Receipt validation</Text>
-          </View>
-        </View>
-      </View>
-      
-      <View style={styles.buttonContainer}>
-        <Button
-          title={`Purchase ${selectedPlan.name} - ${selectedPlan.price}`}
-          onPress={handlePurchase}
-          variant="primary"
-          loading={isProcessing}
-          disabled={isProcessing || !purchaseStatus?.canMakePayments}
-          style={styles.purchaseButton}
-        />
-        
-        <Button
-          title="Cancel"
-          onPress={() => router.back()}
-          variant="outline"
-          disabled={isProcessing}
-          style={styles.cancelButton}
-        />
-      </View>
-      
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          By completing this purchase, you agree to our Terms of Service and Privacy Policy.
-        </Text>
-        <Text style={styles.footerContact}>
-          Need help? Contact us at hello@biztomate.com
-        </Text>
-      </View>
-    </ScrollView>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -237,160 +283,93 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  errorContainer: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 18,
-    color: Colors.light.error,
-    marginBottom: 20,
-    textAlign: 'center',
   },
   header: {
     padding: 20,
     alignItems: 'center',
+    backgroundColor: Colors.light.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: Colors.light.text,
-    marginBottom: 16,
-  },
-  planSummary: {
-    backgroundColor: Colors.light.highlight,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    width: '100%',
-    borderWidth: 1,
-    borderColor: Colors.light.primary,
-  },
-  planName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.light.primary,
-    marginBottom: 4,
-  },
-  planPrice: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     color: Colors.light.text,
-    marginBottom: 4,
+    marginTop: 10,
+    textAlign: 'center',
   },
-  planFeature: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 16,
     color: Colors.light.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
   },
-  paymentMethods: {
+  planDetails: {
     padding: 20,
+    backgroundColor: Colors.light.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
-  sectionTitle: {
-    fontSize: 18,
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  planName: {
+    fontSize: 24,
     fontWeight: '600',
     color: Colors.light.text,
-    marginBottom: 16,
   },
-  paymentOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.light.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+  planPrice: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: Colors.light.primary,
   },
-  selectedPaymentOption: {
-    borderColor: Colors.light.primary,
-    backgroundColor: Colors.light.highlight,
+  planFeatures: {
+    marginTop: 12,
   },
-  disabledPaymentOption: {
-    opacity: 0.6,
-    borderColor: Colors.light.border,
-  },
-  paymentOptionText: {
-    fontSize: 16,
-    color: Colors.light.text,
-    marginLeft: 12,
-    flex: 1,
-  },
-  paymentOptionContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  disabledText: {
-    color: Colors.light.textSecondary,
-  },
-  unavailableText: {
-    fontSize: 12,
-    color: Colors.light.error,
-    marginTop: 2,
-  },
-  checkmark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  paymentInfo: {
-    margin: 20,
-    marginTop: 0,
-    padding: 16,
-    backgroundColor: Colors.light.card,
-    borderRadius: 12,
-  },
-  paymentInfoTitle: {
+  featuresTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.light.text,
     marginBottom: 8,
   },
-  paymentInfoText: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    lineHeight: 20,
-  },
-  securityInfo: {
-    margin: 20,
-    padding: 16,
-    backgroundColor: Colors.light.card,
-    borderRadius: 12,
-  },
-  securityHeader: {
+  featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  securityTitle: {
-    fontSize: 16,
+  featureText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginLeft: 8,
+  },
+  paymentInfo: {
+    padding: 20,
+    backgroundColor: Colors.light.card,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  paymentTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: Colors.light.text,
     marginLeft: 8,
   },
-  securityText: {
+  paymentText: {
     fontSize: 14,
     color: Colors.light.textSecondary,
-    marginBottom: 12,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  securityFeatures: {
-    gap: 8,
-  },
-  securityFeature: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  securityFeatureText: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    marginLeft: 8,
-  },
-  buttonContainer: {
+  actionsContainer: {
     padding: 20,
     gap: 12,
   },
@@ -400,20 +379,51 @@ const styles = StyleSheet.create({
   cancelButton: {
     marginBottom: 8,
   },
-  footer: {
-    padding: 20,
+  processingContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: Colors.light.card,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
   },
-  footerText: {
-    fontSize: 12,
+  processingText: {
+    marginLeft: 8,
     color: Colors.light.textSecondary,
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 16,
   },
-  footerContact: {
-    fontSize: 12,
-    color: Colors.light.primary,
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: Colors.light.background,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.light.error,
+    marginTop: 10,
     textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+    marginTop: 5,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  backButton: {
+    marginTop: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.light.background,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: Colors.light.textSecondary,
   },
 });

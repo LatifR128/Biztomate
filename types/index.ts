@@ -11,14 +11,21 @@ export interface BusinessCard {
   imageUri?: string;
   createdAt: number;
   updatedAt: number;
+  _fallbackId?: string; // Optional identifier for fallback data
 }
 
 export interface User {
+  id: string;
+  email: string;
+  name: string;
+  phone?: string;
   subscriptionPlan: 'free' | 'basic' | 'standard' | 'premium' | 'unlimited';
   subscriptionEndDate?: number;
   trialEndDate?: number;
   scannedCards: number;
   maxCards: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type SubscriptionPlan = {

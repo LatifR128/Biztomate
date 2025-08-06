@@ -1,10 +1,18 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 
 export default function PrivacyPolicyScreen() {
+  const insets = useSafeAreaInsets();
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <View style={styles.content}>
         <Text style={styles.title}>Privacy Policy</Text>
         <Text style={styles.lastUpdated}>Last updated: January 11, 2025</Text>

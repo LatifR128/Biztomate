@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Image
+  Image,
+  Dimensions // Add this
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import TrialBanner from '@/components/TrialBanner';
@@ -21,15 +23,19 @@ import { useUserStore } from '@/store/userStore';
 import { processBusinessCard } from '@/utils/ocrUtils';
 import { BusinessCard } from '@/types';
 
+const { width, height } = Dimensions.get('window');
+const isTablet = width >= 768;
+
 export default function ScanScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [isCapturing, setIsCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   
-  const { addCard, checkDuplicate } = useCardStore();
+  const { addCard, checkDuplicate, syncCards, cleanupFallbackCards } = useCardStore();
   const { canScanMore, incrementScannedCards, isTrialActive } = useUserStore();
   
   const cameraRef = useRef<any>(null);
@@ -60,7 +66,8 @@ export default function ScanScreen() {
             };
             
             // Bypass duplicate check by directly updating the store
-            useCardStore.getState().cards.unshift(cardWithNewId);
+            const currentCards = useCardStore.getState().cards;
+            useCardStore.setState({ cards: [cardWithNewId, ...currentCards] });
             incrementScannedCards();
             router.push(`/card/${cardWithNewId.id}`);
           }
@@ -149,6 +156,10 @@ export default function ScanScreen() {
     try {
       setIsProcessing(true);
       
+      // Sync with Firestore first to ensure we have latest data
+      await syncCards();
+      await cleanupFallbackCards(); // Clean up fallback cards before processing
+      
       // Process the image with AI OCR
       const cardData = await processBusinessCard(imageUri);
       
@@ -165,6 +176,7 @@ export default function ScanScreen() {
         imageUri: imageUri,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        _fallbackId: cardData._fallbackId, // Preserve fallback ID if present
       };
       
       // Check for duplicates
@@ -209,24 +221,36 @@ export default function ScanScreen() {
   
   if (!permission.granted) {
     return (
-      <View style={styles.container}>
-        <Ionicons name="alert-circle" size={48} color={Colors.light.error} style={styles.icon} />
-        <Text style={styles.title}>Camera Permission Required</Text>
-        <Text style={styles.message}>
-          We need camera permission to scan business cards. Please grant permission to continue.
+      <View style={[styles.permissionContainer, isTablet && styles.permissionContainerTablet]}>
+        <Ionicons 
+          name="camera" 
+          size={isTablet ? 80 : 64} 
+          color={Colors.light.textSecondary} 
+        />
+        <Text style={[styles.permissionTitle, isTablet && styles.permissionTitleTablet]}>
+          Camera Permission Required
         </Text>
-        <Button 
-          title="Grant Permission" 
-          onPress={requestPermission} 
+        <Text style={[styles.permissionText, isTablet && styles.permissionTextTablet]}>
+          Biztomate needs camera access to scan business cards and extract contact information.
+        </Text>
+        <Button
+          title="Grant Permission"
+          onPress={requestPermission}
           variant="primary"
-          style={styles.button}
+          size="large"
         />
       </View>
     );
   }
   
   return (
-    <View style={styles.container}>
+    <View style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <TrialBanner />
       
       {isProcessing ? (
@@ -271,7 +295,7 @@ export default function ScanScreen() {
           
           {capturedImage && (
             <View style={styles.previewContainer}>
-              <Ionicons name="image" source={{ uri: capturedImage }} 
+              <Image source={{ uri: capturedImage }} 
                 style={styles.preview} 
                 resizeMode="contain"
               />
@@ -494,5 +518,41 @@ const styles = StyleSheet.create({
   },
   button: {
     minWidth: 200,
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  permissionContainerTablet: {
+    padding: 64,
+  },
+  permissionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    textAlign: 'center',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  permissionTitleTablet: {
+    fontSize: 32,
+    marginTop: 32,
+    marginBottom: 16,
+  },
+  permissionText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
+    paddingHorizontal: 20,
+  },
+  permissionTextTablet: {
+    fontSize: 18,
+    lineHeight: 28,
+    marginBottom: 48,
+    paddingHorizontal: 40,
   },
 });
