@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
 
 interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string;
   subscriptionPlan: 'free' | 'basic' | 'standard' | 'premium' | 'unlimited';
   subscriptionEndDate?: number;
   trialEndDate?: number;
@@ -16,18 +19,22 @@ interface User {
 }
 
 interface UserState {
-  user: User;
+  user: User | null;
+  isLoading: boolean;
+  error: string | null;
   
   // Actions
-  initializeUser: () => void;
-  incrementScannedCards: () => void;
-  updateSubscription: (plan: User['subscriptionPlan']) => void;
+  initializeUser: () => Promise<void>;
+  incrementScannedCards: () => Promise<void>;
+  updateSubscription: (plan: User['subscriptionPlan']) => Promise<void>;
+  updateUser: (updates: Partial<User>) => Promise<void>;
   isTrialActive: () => boolean;
   isSubscriptionActive: () => boolean;
   canScanMore: () => boolean;
   getRemainingCards: () => number;
   getTrialDaysLeft: () => number;
   resetUser: () => void;
+  syncUserFromFirestore: () => Promise<void>;
 }
 
 const createDefaultUser = (): User => ({
@@ -45,40 +52,99 @@ const createDefaultUser = (): User => ({
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
-      user: createDefaultUser(),
+      user: null,
+      isLoading: false,
+      error: null,
       
-      initializeUser: () => {
+      initializeUser: async () => {
         try {
-          const user = get().user;
-          if (!user.trialEndDate) {
+          set({ isLoading: true, error: null });
+          
+          const currentUser = auth?.currentUser;
+          if (!currentUser || !db) {
+            // Fall back to default user if not authenticated
             set({
-              user: createDefaultUser()
+              user: createDefaultUser(),
+              isLoading: false
+            });
+            return;
+          }
+          
+          // Try to get user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            set({
+              user: {
+                id: currentUser.uid,
+                email: userData.email,
+                name: userData.name,
+                subscriptionPlan: userData.subscriptionPlan || 'free',
+                subscriptionEndDate: userData.subscriptionEndDate,
+                trialEndDate: userData.trialEndDate,
+                scannedCards: userData.scannedCards || 0,
+                maxCards: userData.maxCards || 5,
+                createdAt: userData.createdAt || Date.now(),
+                updatedAt: userData.updatedAt || Date.now(),
+              },
+              isLoading: false
+            });
+          } else {
+            // Create default user if not found in Firestore
+            set({
+              user: createDefaultUser(),
+              isLoading: false
             });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error initializing user:', error);
           set({
-            user: createDefaultUser()
+            user: createDefaultUser(),
+            isLoading: false,
+            error: error.message
           });
         }
       },
       
-      incrementScannedCards: () => {
+      incrementScannedCards: async () => {
         try {
+          const currentUser = auth?.currentUser;
+          const { user } = get();
+          
+          if (!user) return;
+          
+          const newScannedCards = user.scannedCards + 1;
+          
+          // Update local state
           set((state) => ({
-            user: {
+            user: state.user ? {
               ...state.user,
-              scannedCards: state.user.scannedCards + 1,
+              scannedCards: newScannedCards,
               updatedAt: Date.now()
-            }
+            } : null
           }));
-        } catch (error) {
+          
+          // Update Firestore if authenticated
+          if (currentUser && db) {
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              scannedCards: newScannedCards,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch (error: any) {
           console.error('Error incrementing scanned cards:', error);
+          set({ error: error.message });
         }
       },
       
-      updateSubscription: (plan) => {
+      updateSubscription: async (plan) => {
         try {
+          const currentUser = auth?.currentUser;
+          const { user } = get();
+          
+          if (!user) return;
+          
           const maxCards = {
             'free': 5,
             'basic': 100,
@@ -91,84 +157,128 @@ export const useUserStore = create<UserState>()(
             ? undefined 
             : Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year
           
+          // Update local state
           set((state) => ({
-            user: {
+            user: state.user ? {
               ...state.user,
               subscriptionPlan: plan,
               subscriptionEndDate,
               maxCards,
               updatedAt: Date.now()
-            }
+            } : null
           }));
-        } catch (error) {
+          
+          // Update Firestore if authenticated
+          if (currentUser && db) {
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              subscriptionPlan: plan,
+              subscriptionEndDate,
+              maxCards,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch (error: any) {
           console.error('Error updating subscription:', error);
+          set({ error: error.message });
+        }
+      },
+      
+      updateUser: async (updates: Partial<User>) => {
+        try {
+          const currentUser = auth?.currentUser;
+          const { user } = get();
+          
+          if (!user) return;
+          
+          const updatedUser = {
+            ...user,
+            ...updates,
+            updatedAt: Date.now()
+          };
+          
+          // Update local state
+          set({ user: updatedUser });
+          
+          // Update Firestore if authenticated
+          if (currentUser && db) {
+            const firestoreUpdates: any = { ...updates, updatedAt: serverTimestamp() };
+            await updateDoc(doc(db, 'users', currentUser.uid), firestoreUpdates);
+          }
+        } catch (error: any) {
+          console.error('Error updating user:', error);
+          set({ error: error.message });
         }
       },
       
       isTrialActive: () => {
-        try {
-          const { trialEndDate, subscriptionPlan } = get().user;
-          return subscriptionPlan === 'free' && 
-                 trialEndDate !== undefined && 
-                 trialEndDate > Date.now();
-        } catch (error) {
-          console.error('Error checking trial status:', error);
+        const { user } = get();
+        if (!user) return false;
+        
+        // If user has an active subscription, they are no longer in trial
+        if (user.subscriptionPlan !== 'free' && user.subscriptionEndDate && Date.now() < user.subscriptionEndDate) {
           return false;
         }
+        
+        // Check if trial is still active
+        return user.trialEndDate ? Date.now() < user.trialEndDate : false;
       },
       
       isSubscriptionActive: () => {
-        try {
-          const { subscriptionEndDate, subscriptionPlan } = get().user;
-          return subscriptionPlan !== 'free' && 
-                 subscriptionEndDate !== undefined && 
-                 subscriptionEndDate > Date.now();
-        } catch (error) {
-          console.error('Error checking subscription status:', error);
-          return false;
-        }
+        const { user } = get();
+        if (!user) return false;
+        return user.subscriptionEndDate ? Date.now() < user.subscriptionEndDate : false;
       },
       
       canScanMore: () => {
-        try {
-          const { scannedCards, maxCards } = get().user;
-          return scannedCards < maxCards;
-        } catch (error) {
-          console.error('Error checking scan limit:', error);
-          return false;
-        }
+        const { user } = get();
+        if (!user) return false;
+        return user.scannedCards < user.maxCards;
       },
       
       getRemainingCards: () => {
-        try {
-          const { scannedCards, maxCards } = get().user;
-          return maxCards - scannedCards;
-        } catch (error) {
-          console.error('Error getting remaining cards:', error);
-          return 0;
-        }
+        const { user } = get();
+        if (!user) return 0;
+        return Math.max(0, user.maxCards - user.scannedCards);
       },
       
       getTrialDaysLeft: () => {
-        try {
-          const { trialEndDate } = get().user;
-          if (!trialEndDate) return 0;
-          
-          const daysLeft = Math.ceil((trialEndDate - Date.now()) / (24 * 60 * 60 * 1000));
-          return Math.max(0, daysLeft);
-        } catch (error) {
-          console.error('Error getting trial days left:', error);
-          return 0;
-        }
+        const { user } = get();
+        if (!user || !user.trialEndDate) return 0;
+        const daysLeft = Math.ceil((user.trialEndDate - Date.now()) / (24 * 60 * 60 * 1000));
+        return Math.max(0, daysLeft);
       },
       
       resetUser: () => {
+        set({ user: null, error: null });
+      },
+      
+      syncUserFromFirestore: async () => {
         try {
-          set({
-            user: createDefaultUser()
-          });
-        } catch (error) {
-          console.error('Error resetting user:', error);
+          const currentUser = auth?.currentUser;
+          if (!currentUser || !db) return;
+          
+          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            set({
+              user: {
+                id: currentUser.uid,
+                email: userData.email,
+                name: userData.name,
+                subscriptionPlan: userData.subscriptionPlan || 'free',
+                subscriptionEndDate: userData.subscriptionEndDate,
+                trialEndDate: userData.trialEndDate,
+                scannedCards: userData.scannedCards || 0,
+                maxCards: userData.maxCards || 5,
+                createdAt: userData.createdAt || Date.now(),
+                updatedAt: userData.updatedAt || Date.now(),
+              }
+            });
+          }
+        } catch (error: any) {
+          console.error('Error syncing user from Firestore:', error);
+          set({ error: error.message });
         }
       }
     }),

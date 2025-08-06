@@ -2,10 +2,16 @@ import React from "react";
 import { Tabs } from "expo-router";
 import Colors from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform } from "react-native";
+import { Platform, Dimensions } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width, height } = Dimensions.get('window');
+const isTablet = width >= 768;
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  
   const handleTabPress = () => {
     if (Platform.OS === 'ios') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -21,9 +27,10 @@ export default function TabLayout() {
           backgroundColor: Colors.light.background,
           borderTopColor: Colors.light.border,
           borderTopWidth: 0.5,
-          height: Platform.OS === 'ios' ? 88 : 60,
-          paddingBottom: Platform.OS === 'ios' ? 30 : 10,
+          height: Platform.OS === 'ios' ? (isTablet ? 88 : 83) : 60,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 10,
           paddingTop: 10,
+          paddingHorizontal: 20,
         },
         headerStyle: {
           backgroundColor: Colors.light.background,

@@ -12,22 +12,26 @@ import {
   Dimensions,
   Animated,
   StatusBar,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
+import { Typography } from '@/constants/typography';
+import { Spacing, BorderRadius } from '@/constants/spacing';
 import { useAuthStore } from '@/store/authStore';
-import * as Crypto from 'expo-crypto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sanitizeInput, validateField, getPasswordStrength } from '@/utils/validationUtils';
 
 const { width, height } = Dimensions.get('window');
+const isTablet = width >= 768;
 
 export default function SignUpScreen() {
   const router = useRouter();
-  const { signUp, isLoading, error } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const { signUp, signInWithGoogle, isLoading, error } = useAuthStore();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -39,8 +43,12 @@ export default function SignUpScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOAuthLoading] = useState<'google' | null>(null);
+  
+  // Animation values
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [scaleAnim] = useState(new Animated.Value(0.8));
   const [progressAnim] = useState(new Animated.Value(0));
 
   // Initialize animations
@@ -54,6 +62,11 @@ export default function SignUpScreen() {
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 800,
         useNativeDriver: true,
       }),
     ]).start();
@@ -106,62 +119,21 @@ export default function SignUpScreen() {
     return Object.keys(errors).length === 0;
   };
 
-  const hashPassword = async (password: string): Promise<string> => {
-    try {
-      const digest = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        password + 'biztomate_salt_2024',
-        { encoding: Crypto.CryptoEncoding.HEX }
-      );
-      return digest;
-    } catch (error) {
-      console.error('Password hashing error:', error);
-      throw new Error('Failed to process password securely');
-    }
-  };
-
-  const storeUserLocally = async (uid: string, email: string, name: string, passwordHash: string) => {
-    try {
-      const userData = {
-        uid,
-        email,
-        name,
-        passwordHash,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      await AsyncStorage.setItem(`user_${uid}`, JSON.stringify(userData));
-    } catch (error) {
-      console.error('Local storage error:', error);
-      throw new Error('Failed to store user data locally');
-    }
-  };
-
   const handleSignUp = async () => {
-    if (!validateForm() || loading) return;
-
+    if (!validateForm()) return;
+    
+    setLoading(true);
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Sign up timed out. Please try again.')), 30000); // 30 seconds
+    });
+    
     try {
-      setLoading(true);
-      
-      // Animate progress
-      Animated.timing(progressAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: false,
-      }).start();
-      
-      // Hash password before storing
-      const passwordHash = await hashPassword(formData.password);
-      
-      // Sign up with Firebase
-      await signUp(formData.email.trim(), formData.password, formData.name.trim());
-      
-      // Store user data locally with hashed password
-      const user = useAuthStore.getState().user;
-      if (user) {
-        await storeUserLocally(user.uid, formData.email.trim(), formData.name.trim(), passwordHash);
-      }
+      await Promise.race([
+        signUp(formData.email, formData.password, formData.name),
+        timeoutPromise
+      ]);
       
       Alert.alert(
         'Welcome to Biztomate! 🎉',
@@ -169,16 +141,42 @@ export default function SignUpScreen() {
         [
           {
             text: 'Get Started',
-            onPress: () => router.replace('/(tabs)' as any)
+            onPress: () => router.replace('/(tabs)')
           }
         ]
       );
-      
     } catch (error: any) {
-      console.log('Sign up error:', error.message);
+      console.error('Sign up error:', error);
+      Alert.alert('Sign Up Failed', error.message || 'Please try again.', [{ text: 'OK' }]);
     } finally {
       setLoading(false);
-      progressAnim.setValue(0);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setOAuthLoading('google');
+    try {
+      const user = await signInWithGoogle();
+      
+      if (user) {
+        Alert.alert(
+          'Welcome to Biztomate! 🎉',
+          `Welcome back, ${user.name}! You can now start scanning business cards.`,
+          [
+            {
+              text: 'Get Started',
+              onPress: () => router.replace('/(tabs)')
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Google Sign-In Failed', 'Please try again.', [{ text: 'OK' }]);
+      }
+    } catch (error: any) {
+      console.error('Google Sign-In error:', error);
+      Alert.alert('Google Sign-In Failed', 'An unexpected error occurred. Please try again.', [{ text: 'OK' }]);
+    } finally {
+      setOAuthLoading(null);
     }
   };
 
@@ -190,121 +188,143 @@ export default function SignUpScreen() {
     router.back();
   };
 
-  const passwordStrength = getPasswordStrength(formData.password);
-
   const getPasswordStrengthColor = () => {
-    switch (passwordStrength.strength.toLowerCase()) {
-      case 'weak': return '#EF4444';
-      case 'fair': return '#F59E0B';
-      case 'good': return '#42A5F5';
-      case 'strong': return '#10B981';
-      default: return '#E5E7EB';
-    }
+    if (!formData.password) return Colors.light.border;
+    const strength = getPasswordStrength(formData.password);
+    return strength.color;
+  };
+
+  const getPasswordStrengthText = () => {
+    if (!formData.password) return '';
+    const strength = getPasswordStrength(formData.password);
+    return strength.strength;
   };
 
   return (
     <KeyboardAvoidingView 
-      style={styles.container} 
+      style={[
+        styles.container,
+        { 
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom 
+        }
+      ]} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
       <LinearGradient
-        colors={[Colors.light.primary, '#4F46E5', '#7C3AED']}
+        colors={['#FFFFFF', '#FFFFFF']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
-
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logoBackground}>
-              <Ionicons name="flash" size={32} color="white" />
-            </View>
-            <Text style={styles.appName}>Biztomate</Text>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+              <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Create Account</Text>
+            <View style={styles.placeholder} />
           </View>
 
-          <Text style={styles.title}>Create Your Account</Text>
-          <Text style={styles.subtitle}>Join thousands of professionals using Biztomate</Text>
-
-          {error && (
-            <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#DC2626" />
-              <Text style={styles.errorText}>{error}</Text>
+          {/* Logo */}
+          <Animated.View style={[styles.logoContainer, { transform: [{ scale: scaleAnim }] }]}>
+            <View style={styles.logoBackground}>
+              <Ionicons name="flash" size={32} color={Colors.light.primary} />
             </View>
-          )}
+            <Text style={styles.appName}>Biztomate</Text>
+            <Text style={styles.tagline}>Join thousands of professionals</Text>
+          </Animated.View>
 
-          <View style={styles.form}>
+          {/* OAuth Buttons */}
+          <View style={styles.oauthContainer}>
+            <Text style={styles.oauthTitle}>Quick Sign Up</Text>
+            
+            {/* Google Sign-In Button */}
+            <TouchableOpacity
+              style={[styles.oauthButton, styles.googleButton]}
+              onPress={handleGoogleSignIn}
+              disabled={oauthLoading !== null}
+            >
+              {oauthLoading === 'google' ? (
+                <ActivityIndicator size="small" color={Colors.light.google.blue} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color={Colors.light.google.blue} />
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View style={styles.dividerContainer}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.divider} />
+            </View>
+          </View>
+
+          {/* Email Form */}
+          <View style={styles.formContainer}>
+            <Text style={styles.formTitle}>Sign up with email</Text>
+            
             {/* Name Input */}
-            <View style={styles.inputGroup}>
+            <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Full Name</Text>
-              <View style={[styles.inputContainer, formErrors.name && styles.inputError]}>
-                <Ionicons name="person" size={20} color={Colors.light.textSecondary} style={styles.inputIcon} />
+              <View style={[styles.inputWrapper, formErrors.name && styles.inputError]}>
+                <Ionicons name="person" size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your full name"
                   placeholderTextColor={Colors.light.textSecondary}
                   value={formData.name}
-                  onChangeText={(value) => updateFormData('name', value)}
+                  onChangeText={(text) => updateFormData('name', text)}
                   autoCapitalize="words"
                   autoCorrect={false}
-                  autoComplete="name"
                 />
               </View>
-              {formErrors.name && (
-                <Text style={styles.errorText}>{formErrors.name}</Text>
-              )}
+              {formErrors.name && <Text style={styles.errorText}>{formErrors.name}</Text>}
             </View>
 
             {/* Email Input */}
-            <View style={styles.inputGroup}>
+            <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Email Address</Text>
-              <View style={[styles.inputContainer, formErrors.email && styles.inputError]}>
-                <Ionicons name="mail" size={20} color={Colors.light.textSecondary} style={styles.inputIcon} />
+              <View style={[styles.inputWrapper, formErrors.email && styles.inputError]}>
+                <Ionicons name="mail" size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your email"
                   placeholderTextColor={Colors.light.textSecondary}
                   value={formData.email}
-                  onChangeText={(value) => updateFormData('email', value.toLowerCase())}
+                  onChangeText={(text) => updateFormData('email', text)}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete="email"
                 />
               </View>
-              {formErrors.email && (
-                <Text style={styles.errorText}>{formErrors.email}</Text>
-              )}
+              {formErrors.email && <Text style={styles.errorText}>{formErrors.email}</Text>}
             </View>
 
             {/* Password Input */}
-            <View style={styles.inputGroup}>
+            <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Password</Text>
-              <View style={[styles.inputContainer, formErrors.password && styles.inputError]}>
-                <Ionicons name="lock-closed" size={20} color={Colors.light.textSecondary} style={styles.inputIcon} />
+              <View style={[styles.inputWrapper, formErrors.password && styles.inputError]}>
+                <Ionicons name="lock-closed" size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Create a strong password"
+                  placeholder="Create a password"
                   placeholderTextColor={Colors.light.textSecondary}
                   value={formData.password}
-                  onChangeText={(value) => updateFormData('password', value)}
+                  onChangeText={(text) => updateFormData('password', text)}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete="new-password"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeButton}
-                >
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                   <Ionicons 
                     name={showPassword ? "eye-off" : "eye"} 
                     size={20} 
@@ -312,55 +332,33 @@ export default function SignUpScreen() {
                   />
                 </TouchableOpacity>
               </View>
-              
-              {/* Password Strength Indicator */}
               {formData.password && (
-                <View style={styles.passwordStrengthContainer}>
-                  <View style={styles.strengthBar}>
-                    <Animated.View 
-                      style={[
-                        styles.strengthFill, 
-                        { 
-                          width: progressAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0%', `${passwordStrength.percentage}%`]
-                          }),
-                          backgroundColor: getPasswordStrengthColor()
-                        }
-                      ]} 
-                    />
-                  </View>
+                <View style={styles.passwordStrength}>
+                  <View style={[styles.strengthBar, { backgroundColor: getPasswordStrengthColor() }]} />
                   <Text style={[styles.strengthText, { color: getPasswordStrengthColor() }]}>
-                    {passwordStrength.strength}
+                    {getPasswordStrengthText()}
                   </Text>
                 </View>
               )}
-              
-              {formErrors.password && (
-                <Text style={styles.errorText}>{formErrors.password}</Text>
-              )}
+              {formErrors.password && <Text style={styles.errorText}>{formErrors.password}</Text>}
             </View>
 
             {/* Confirm Password Input */}
-            <View style={styles.inputGroup}>
+            <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
-              <View style={[styles.inputContainer, formErrors.confirmPassword && styles.inputError]}>
-                <Ionicons name="lock-closed" size={20} color={Colors.light.textSecondary} style={styles.inputIcon} />
+              <View style={[styles.inputWrapper, formErrors.confirmPassword && styles.inputError]}>
+                <Ionicons name="lock-closed" size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
                   placeholder="Confirm your password"
                   placeholderTextColor={Colors.light.textSecondary}
                   value={formData.confirmPassword}
-                  onChangeText={(value) => updateFormData('confirmPassword', value)}
+                  onChangeText={(text) => updateFormData('confirmPassword', text)}
                   secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete="new-password"
                 />
-                <TouchableOpacity
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={styles.eyeButton}
-                >
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
                   <Ionicons 
                     name={showConfirmPassword ? "eye-off" : "eye"} 
                     size={20} 
@@ -368,45 +366,58 @@ export default function SignUpScreen() {
                   />
                 </TouchableOpacity>
               </View>
-              {formErrors.confirmPassword && (
-                <Text style={styles.errorText}>{formErrors.confirmPassword}</Text>
-              )}
+              {formErrors.confirmPassword && <Text style={styles.errorText}>{formErrors.confirmPassword}</Text>}
             </View>
+
+            {/* Progress Bar */}
+            {loading && (
+              <View style={styles.progressContainer}>
+                <Animated.View 
+                  style={[
+                    styles.progressBar, 
+                    { width: progressAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0%', '100%']
+                    })}
+                  ]} 
+                />
+              </View>
+            )}
 
             {/* Sign Up Button */}
             <TouchableOpacity
-              style={[styles.signUpButton, (loading || isLoading) && styles.disabledButton]}
+              style={[styles.signUpButton, loading && styles.signUpButtonDisabled]}
               onPress={handleSignUp}
-              disabled={loading || isLoading}
+              disabled={loading || oauthLoading !== null}
             >
-              <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {(loading || isLoading) ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.signUpButtonText}>Create Account</Text>
-                )}
-              </LinearGradient>
+              {loading ? (
+                <ActivityIndicator size="small" color={Colors.light.primary} />
+              ) : (
+                <Text style={styles.signUpButtonText}>Create Account</Text>
+              )}
             </TouchableOpacity>
 
-            {/* Terms and Privacy */}
-            <Text style={styles.termsText}>
-              By creating an account, you agree to our{' '}
-              <Text style={styles.linkText}>Terms of Service</Text> and{' '}
-              <Text style={styles.linkText}>Privacy Policy</Text>
-            </Text>
+            {/* Sign In Link */}
+            <View style={styles.signInContainer}>
+              <Text style={styles.signInText}>Already have an account? </Text>
+              <TouchableOpacity onPress={handleSignIn}>
+                <Text style={styles.signInLink}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Sign In Link */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={handleSignIn}>
-              <Text style={styles.linkText}>Sign In</Text>
-            </TouchableOpacity>
+          {/* Terms and Privacy */}
+          <View style={styles.termsContainer}>
+            <Text style={styles.termsText}>
+              By signing up, you agree to our{' '}
+              <Text style={styles.termsLink} onPress={() => router.push('/terms')}>
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text style={styles.termsLink} onPress={() => router.push('/privacy')}>
+                Privacy Policy
+              </Text>
+            </Text>
           </View>
         </Animated.View>
       </ScrollView>
@@ -428,18 +439,39 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
-  header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  backButton: {
+      header: {
+      paddingTop: 20,
+      paddingHorizontal: 20,
+      paddingBottom: 30,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: Colors.light.card,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+      zIndex: 1,
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: Colors.light.text,
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      textAlign: 'center',
+    },
+  placeholder: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -448,7 +480,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
   },
   logoBackground: {
     width: 80,
@@ -462,76 +494,110 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
     textAlign: 'center',
+    marginBottom: 4,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-    borderColor: 'rgba(220, 38, 38, 0.3)',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  errorText: {
-    color: '#DC2626',
+  tagline: {
     fontSize: 14,
-    marginLeft: 8,
-    flex: 1,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
   },
-  form: {
-    marginBottom: 32,
+  oauthContainer: {
+    marginBottom: 30,
   },
-  inputGroup: {
+  oauthTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    textAlign: 'center',
     marginBottom: 20,
   },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-    marginBottom: 8,
-  },
-  inputContainer: {
+  oauthButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  inputError: {
-    borderColor: '#DC2626',
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+  googleButton: {
+    backgroundColor: Colors.light.background,
+    borderColor: Colors.light.border,
   },
-  inputIcon: {
-    marginRight: 12,
+  googleButtonText: {
+    color: Colors.light.google.blue, // Google brand color
+    fontSize: Typography.sizes.lg,
+    fontWeight: '600' as const,
+    marginLeft: Spacing.base,
   },
-  input: {
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  divider: {
     flex: 1,
-    fontSize: 16,
-    color: 'white',
+    height: 1,
+    backgroundColor: Colors.light.border,
   },
-  eyeButton: {
-    padding: 4,
+  dividerText: {
+    color: Colors.light.textSecondary,
+    fontSize: 14,
+    marginHorizontal: 16,
   },
-  passwordStrengthContainer: {
+  formContainer: {
+    marginBottom: 20,
+  },
+  formTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+      inputContainer: {
+      marginBottom: 16,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: Colors.light.text,
+      marginBottom: 8,
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.light.background,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      height: 56,
+      borderWidth: 1,
+      borderColor: Colors.light.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+  inputError: {
+    borderColor: Colors.light.error,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+  },
+      input: {
+      flex: 1,
+      fontSize: 16,
+      color: Colors.light.text,
+      marginLeft: 12,
+    },
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  passwordStrength: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
@@ -539,55 +605,67 @@ const styles = StyleSheet.create({
   strengthBar: {
     flex: 1,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 2,
-    marginRight: 12,
-    overflow: 'hidden',
-  },
-  strengthFill: {
-    height: '100%',
     borderRadius: 2,
   },
   strengthText: {
     fontSize: 12,
     fontWeight: '600',
-    minWidth: 50,
+    marginLeft: 8,
+  },
+  progressContainer: {
+    height: 4,
+    backgroundColor: Colors.light.border,
+    borderRadius: 2,
+    marginTop: 20,
+    marginBottom: 24,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.light.primary,
   },
   signUpButton: {
     marginTop: 24,
     borderRadius: 12,
     overflow: 'hidden',
-  },
-  buttonGradient: {
     paddingVertical: 16,
     alignItems: 'center',
+    backgroundColor: Colors.light.primary,
+  },
+  signUpButtonDisabled: {
+    opacity: 0.6,
   },
   signUpButtonText: {
-    color: 'white',
+    color: Colors.light.background,
     fontSize: 18,
     fontWeight: 'bold',
   },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  termsText: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-    textAlign: 'center',
-    marginTop: 16,
-    lineHeight: 18,
-  },
-  linkText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  footer: {
+  signInContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 20,
   },
-  footerText: {
+  signInText: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
+  },
+  signInLink: {
+    color: Colors.light.primary,
+    fontWeight: '600',
+  },
+  termsContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  termsText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  termsLink: {
+    color: Colors.light.primary,
+    fontWeight: '600',
   },
 }); 

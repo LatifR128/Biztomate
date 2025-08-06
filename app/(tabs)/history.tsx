@@ -6,10 +6,12 @@ import {
   FlatList, 
   TextInput,
   TouchableOpacity,
-  RefreshControl
+  RefreshControl,
+  Dimensions // Add this
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import { BusinessCard } from '@/types';
@@ -18,8 +20,12 @@ import EmptyState from '@/components/EmptyState';
 import Button from '@/components/Button';
 import TrialBanner from '@/components/TrialBanner';
 
+const { width } = Dimensions.get('window');
+const isTablet = width >= 768;
+
 export default function HistoryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { cards, searchCards } = useCardStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -71,7 +77,13 @@ export default function HistoryScreen() {
   };
   
   return (
-    <View style={styles.container}>
+    <View style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <TrialBanner />
       
       {cards.length > 0 && (
@@ -143,6 +155,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  searchContainerTablet: {
+    margin: 32,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   searchInput: {
     flex: 1,
     fontSize: 16,
@@ -160,7 +178,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   actionContainer: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
     backgroundColor: Colors.light.background,

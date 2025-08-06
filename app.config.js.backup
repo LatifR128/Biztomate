@@ -1,0 +1,58 @@
+module.exports = {
+  expo: {
+    name: "Biztomate",
+    slug: "biztomate-scanner",
+    version: "1.3.5",
+    orientation: "portrait",
+    icon: "./assets/images/icon.png",
+    scheme: "com.biztomate.scanner",
+    userInterfaceStyle: "automatic",
+    splash: {
+      image: "./assets/images/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#FFFFFF"
+    },
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.biztomate.scanner",
+      buildNumber: "101",
+      infoPlist: {
+        NSCameraUsageDescription: "Biztomate needs camera access to scan business cards and extract contact information.",
+        NSPhotoLibraryUsageDescription: "Biztomate needs photo library access to select business card images for processing.",
+        NSMicrophoneUsageDescription: "Biztomate may need microphone access for enhanced scanning features.",
+        ITSAppUsesNonExemptEncryption: false
+      }
+    },
+    android: {
+      package: "com.biztomate.scanner",
+      versionCode: 11,
+      adaptiveIcon: {
+        foregroundImage: "./assets/images/adaptive-icon.png",
+        backgroundColor: "#FFFFFF"
+      },
+      permissions: [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    web: {
+      favicon: "./assets/images/favicon.png",
+      bundler: "metro"
+    },
+    plugins: [
+      "expo-router",
+      "expo-camera",
+      "expo-image-picker"
+    ],
+    experiments: {
+      typedRoutes: true
+    },
+    extra: {
+      router: {},
+      eas: {
+        projectId: "eb90d0c8-fdbf-4a14-a35c-88e2a13c4ea2"
+      }
+    }
+  }
+};

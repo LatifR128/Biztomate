@@ -3,8 +3,8 @@ exports.AppConfig = {
   app: {
     name: 'Biztomate',
     slug: 'biztomate-scanner',
-    version: '1.2',
-    buildNumber: '9',
+    version: '1.3.8',
+    buildNumber: '120',
     description: 'AI-powered business card scanner'
   },
   bundle: {
@@ -36,24 +36,35 @@ exports.AppConfig = {
   subscription: {
     trialDays: 7,
     freeScans: 5,
+    currency: 'CAD',
     plans: {
       basic: {
         id: 'basic',
-        price: 4.99,
+        price: 19.99,
+        currency: 'CAD',
         scans: 100,
-        features: ['100 scans per month', 'Export to CSV', 'Basic support']
+        features: ['100 scans per year', 'Export to CSV', 'Basic support']
       },
       standard: {
         id: 'standard',
-        price: 9.99,
+        price: 24.99,
+        currency: 'CAD',
         scans: 250,
-        features: ['250 scans per month', 'Export to Excel', 'Priority support']
+        features: ['250 scans per year', 'Export to Excel', 'Priority support']
       },
       premium: {
         id: 'premium',
-        price: 19.99,
+        price: 36.99,
+        currency: 'CAD',
         scans: 500,
-        features: ['500 scans per month', 'All export formats', 'Premium support']
+        features: ['500 scans per year', 'All export formats', 'Premium support']
+      },
+      unlimited: {
+        id: 'unlimited',
+        price: 49.99,
+        currency: 'CAD',
+        scans: Infinity,
+        features: ['Unlimited scans per year', 'All export formats', 'Team sharing', 'Premium support']
       }
     }
   },

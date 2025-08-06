@@ -67,7 +67,7 @@ export default function CardItem({ card, onPress }: CardItemProps) {
       </View>
       
       {card.imageUri && (
-        <Ionicons name="image" source={{ uri: card.imageUri }} 
+        <Image source={{ uri: card.imageUri }} 
           style={styles.thumbnail}
           resizeMode="cover"
         />

@@ -8,6 +8,8 @@ import {
   TextStyle
 } from 'react-native';
 import Colors from '@/constants/colors';
+import { Typography, TextStyles } from '@/constants/typography';
+import { Spacing, BorderRadius, Shadows } from '@/constants/spacing';
 
 interface ButtonProps {
   title: string;
@@ -34,27 +36,28 @@ export default function Button({
 }: ButtonProps) {
   const getButtonStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
-      borderRadius: 8,
+      borderRadius: BorderRadius.base,
       alignItems: 'center',
       justifyContent: 'center',
       flexDirection: 'row',
+      ...Shadows.base,
     };
     
     // Add size styles
     if (size === 'small') {
       Object.assign(baseStyle, {
-        paddingVertical: 6,
-        paddingHorizontal: 12,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.base,
       });
     } else if (size === 'medium') {
       Object.assign(baseStyle, {
-        paddingVertical: 10,
-        paddingHorizontal: 16,
+        paddingVertical: Spacing.base,
+        paddingHorizontal: Spacing.md,
       });
     } else if (size === 'large') {
       Object.assign(baseStyle, {
-        paddingVertical: 14,
-        paddingHorizontal: 20,
+        paddingVertical: Spacing.lg,
+        paddingHorizontal: Spacing.xl,
       });
     }
     
@@ -78,6 +81,11 @@ export default function Button({
         backgroundColor: 'transparent',
         paddingVertical: 0,
         paddingHorizontal: 0,
+        shadowColor: 'transparent',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
       });
     }
     
@@ -97,23 +105,23 @@ export default function Button({
   
   const getTextStyle = (): TextStyle => {
     const baseStyle: TextStyle = {
-      fontWeight: '600',
+      fontWeight: '600' as const,
     };
     
     // Add size styles
     if (size === 'small') {
-      Object.assign(baseStyle, { fontSize: 12 });
+      Object.assign(baseStyle, { fontSize: Typography.sizes.sm });
     } else if (size === 'medium') {
-      Object.assign(baseStyle, { fontSize: 14 });
+      Object.assign(baseStyle, { fontSize: Typography.sizes.base });
     } else if (size === 'large') {
-      Object.assign(baseStyle, { fontSize: 16 });
+      Object.assign(baseStyle, { fontSize: Typography.sizes.lg });
     }
     
     // Add variant styles
     if (variant === 'primary') {
-      Object.assign(baseStyle, { color: 'white' });
+      Object.assign(baseStyle, { color: Colors.light.background });
     } else if (variant === 'secondary') {
-      Object.assign(baseStyle, { color: 'white' });
+      Object.assign(baseStyle, { color: Colors.light.background });
     } else if (variant === 'outline') {
       Object.assign(baseStyle, { color: Colors.light.primary });
     } else if (variant === 'text') {
@@ -121,7 +129,7 @@ export default function Button({
     }
     
     if (disabled) {
-      Object.assign(baseStyle, { color: '#FFFFFF' });
+      Object.assign(baseStyle, { color: Colors.light.background });
     }
     
     if (textStyle) {
@@ -140,7 +148,7 @@ export default function Button({
     >
       {loading ? (
         <ActivityIndicator 
-          color={variant === 'primary' ? 'white' : Colors.light.primary} 
+          color={variant === 'primary' ? Colors.light.background : Colors.light.primary} 
           size="small" 
         />
       ) : (

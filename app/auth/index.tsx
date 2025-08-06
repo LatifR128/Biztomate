@@ -53,10 +53,7 @@ export default function AuthLandingScreen() {
     router.push('/auth/signin' as any);
   };
 
-  const handleSkipAuth = () => {
-    // For development/testing purposes
-    router.replace('/(tabs)' as any);
-  };
+
 
   return (
     <KeyboardAvoidingView 
@@ -66,7 +63,7 @@ export default function AuthLandingScreen() {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
       <LinearGradient
-        colors={[Colors.light.primary, '#4F46E5', '#7C3AED']}
+        colors={[Colors.light.primary, Colors.light.secondary]}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -131,7 +128,7 @@ export default function AuthLandingScreen() {
               onPress={handleSignUp}
             >
               <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
+                colors={[Colors.light.secondary, Colors.light.primary]}
                 style={styles.buttonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -147,13 +144,7 @@ export default function AuthLandingScreen() {
               <Text style={styles.secondaryButtonText}>I already have an account</Text>
             </TouchableOpacity>
 
-            {/* Development Skip Button */}
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={handleSkipAuth}
-            >
-              <Text style={styles.skipButtonText}>Skip for Demo</Text>
-            </TouchableOpacity>
+
           </View>
 
           {/* Footer */}
@@ -293,15 +284,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  skipButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  skipButtonText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
+
   footer: {
     alignItems: 'center',
   },

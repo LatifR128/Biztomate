@@ -9,7 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
-import { useTrialStore, type TrialData } from '@/store/trialStore';
+import { useUserStore } from '@/store/userStore';
 import { useAuthStore } from '@/store/authStore';
 
 interface TrialBannerProps {
@@ -20,27 +20,20 @@ interface TrialBannerProps {
 export default function TrialBanner({ onUpgrade, showUpgradeButton = true }: TrialBannerProps) {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { trialData, checkTrialStatus } = useTrialStore();
-  const [localTrialData, setLocalTrialData] = useState<TrialData | null>(null);
-
-  useEffect(() => {
-    if (user?.uid) {
-      loadTrialStatus();
-    }
-  }, [user?.uid]);
-
-  const loadTrialStatus = async () => {
-    if (user?.uid) {
-      const status = await checkTrialStatus(user.uid);
-      setLocalTrialData(status);
-    }
-  };
+  const { user: userData, isTrialActive, getTrialDaysLeft } = useUserStore();
 
   const handleUpgrade = () => {
     if (onUpgrade) {
       onUpgrade();
     } else {
-      router.push('/subscription' as any);
+      // Check if user is authenticated
+      if (!user) {
+        // If not authenticated, go to signup page
+        router.push('/auth/signup' as any);
+      } else {
+        // If authenticated, go to subscription page
+        router.push('/subscription' as any);
+      }
     }
   };
 
@@ -65,12 +58,12 @@ export default function TrialBanner({ onUpgrade, showUpgradeButton = true }: Tri
     );
   };
 
-  // Don't show banner if no trial data or trial is not active
-  if (!localTrialData || !localTrialData.isActive) {
+  // Don't show banner if trial is not active
+  if (!isTrialActive()) {
     return null;
   }
 
-  const { daysRemaining } = localTrialData;
+  const daysRemaining = getTrialDaysLeft();
   const isExpiringSoon = daysRemaining <= 1;
 
   return (
@@ -140,7 +133,7 @@ const styles = StyleSheet.create({
     borderLeftColor: Colors.light.primary,
   },
   expiringContainer: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: Colors.light.overlay.warning,
     borderLeftWidth: 4,
     borderLeftColor: Colors.light.warning,
   },

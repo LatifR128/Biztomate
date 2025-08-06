@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import Button from '@/components/Button';
@@ -20,6 +21,7 @@ import CardDetailField from '@/components/CardDetailField';
 export default function CardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { getCard, updateCard, deleteCard } = useCardStore();
   const [isEditing, setIsEditing] = useState(false);
   
@@ -112,10 +114,16 @@ ${card.email ? 'Email: ' + card.email + '\n' : ''}${card.phone ? 'Phone: ' + car
   };
   
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <View style={styles.header}>
         {card.imageUri ? (
-          <Ionicons name="image" source={{ uri: card.imageUri }} 
+          <Image source={{ uri: card.imageUri }} 
             style={styles.cardImage}
             resizeMode="cover"
           />

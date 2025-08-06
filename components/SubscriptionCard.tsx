@@ -1,52 +1,115 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { SubscriptionPlan } from '@/types';
-import Colors from '@/constants/colors';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Colors from '@/constants/colors';
+import { SubscriptionPlan } from '@/types';
+
+const { width } = Dimensions.get('window');
+const isTablet = width >= 768;
 
 interface SubscriptionCardProps {
   plan: SubscriptionPlan;
   isSelected: boolean;
   onSelect: (plan: SubscriptionPlan) => void;
+  onSubscribe?: (plan: SubscriptionPlan) => void;
+  isCurrentPlan?: boolean;
+  isAvailable?: boolean;
+  price?: string;
+  product?: any;
 }
 
 export default function SubscriptionCard({ 
   plan, 
   isSelected, 
-  onSelect 
+  onSelect, 
+  onSubscribe, 
+  isCurrentPlan = false, 
+  isAvailable = true, 
+  price, 
+  product 
 }: SubscriptionCardProps) {
+  const isDisabled = !isAvailable || isCurrentPlan;
+  
+  const handlePress = () => {
+    if (isDisabled) return;
+    if (onSubscribe && !isCurrentPlan) {
+      onSubscribe(plan);
+    } else {
+      onSelect(plan);
+    }
+  };
+
   return (
     <TouchableOpacity
       style={[
-        styles.container,
-        isSelected && styles.selectedContainer
+        styles.container, 
+        isSelected && styles.selectedContainer, 
+        isDisabled && styles.disabledContainer,
+        isCurrentPlan && styles.currentPlanContainer,
+        isTablet && styles.containerTablet
       ]}
-      onPress={() => onSelect(plan)}
-      activeOpacity={0.8}
+      onPress={handlePress}
+      activeOpacity={isDisabled ? 1 : 0.8}
+      disabled={isDisabled}
     >
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.name}>{plan.name}</Text>
-        <Text style={styles.price}>{plan.price}</Text>
-      </View>
-      
-      <View style={styles.limitContainer}>
-        <Text style={styles.limitText}>
-          {plan.cardsLimit === Infinity ? 'Unlimited' : plan.cardsLimit} Cards
+        <View style={styles.titleContainer}>
+          <Text style={[styles.title, isTablet && styles.titleTablet]}>{plan.name}</Text>
+          {isCurrentPlan && (
+            <View style={styles.currentBadge}>
+              <Text style={styles.currentBadgeText}>Current</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.price, isTablet && styles.priceTablet]}>
+          {price || plan.price}
         </Text>
       </View>
-      
+
+      {/* Features */}
       <View style={styles.featuresContainer}>
         {plan.features.map((feature, index) => (
           <View key={index} style={styles.featureRow}>
-            <Ionicons name="checkmark" size={16} color={Colors.light.primary} />
-            <Text style={styles.featureText}>{feature}</Text>
+            <Ionicons 
+              name="checkmark-circle" 
+              size={isTablet ? 20 : 16} 
+              color={Colors.light.primary} 
+            />
+            <Text style={[styles.featureText, isTablet && styles.featureTextTablet]}>
+              {feature}
+            </Text>
           </View>
         ))}
       </View>
-      
-      {isSelected && (
-        <View style={styles.selectedBadge}>
-          <Text style={styles.selectedText}>Selected</Text>
+
+      {/* Card Limit */}
+      <View style={styles.limitContainer}>
+        <Ionicons name="card" size={isTablet ? 20 : 16} color={Colors.light.textSecondary} />
+        <Text style={[styles.limitText, isTablet && styles.limitTextTablet]}>
+          {plan.cardsLimit === Infinity ? 'Unlimited' : `${plan.cardsLimit} cards`} per year
+        </Text>
+      </View>
+
+      {/* Action Button */}
+      {!isCurrentPlan && (
+        <View style={styles.actionContainer}>
+          <TouchableOpacity
+            style={[styles.subscribeButton, isTablet && styles.subscribeButtonTablet]}
+            onPress={() => onSubscribe?.(plan)}
+            disabled={!isAvailable}
+          >
+            <Text style={[styles.subscribeButtonText, isTablet && styles.subscribeButtonTextTablet]}>
+              {isAvailable ? 'Subscribe' : 'Unavailable'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Selected Indicator */}
+      {isSelected && !isCurrentPlan && (
+        <View style={[styles.selectedIndicator, isTablet && styles.selectedIndicatorTablet]}>
+          <Ionicons name="checkmark" size={isTablet ? 24 : 20} color="white" />
         </View>
       )}
     </TouchableOpacity>
@@ -56,47 +119,70 @@ export default function SubscriptionCard({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.light.card,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 16,
     borderWidth: 2,
     borderColor: 'transparent',
+    position: 'relative',
+  },
+  containerTablet: {
+    padding: 32,
+    marginBottom: 24,
+    borderRadius: 20,
   },
   selectedContainer: {
     borderColor: Colors.light.primary,
     backgroundColor: Colors.light.highlight,
   },
+  disabledContainer: {
+    opacity: 0.6,
+  },
+  currentPlanContainer: {
+    borderColor: Colors.light.secondary,
+    backgroundColor: Colors.light.highlight,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  name: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.light.text,
-  },
-  price: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.light.primary,
-  },
-  limitContainer: {
-    backgroundColor: Colors.light.highlight,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
-  limitText: {
-    fontSize: 14,
-    fontWeight: '500',
+  titleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginRight: 8,
+  },
+  titleTablet: {
+    fontSize: 24,
+  },
+  currentBadge: {
+    backgroundColor: Colors.light.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  currentBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  price: {
+    fontSize: 18,
+    fontWeight: 'bold',
     color: Colors.light.primary,
-    textAlign: 'center',
+  },
+  priceTablet: {
+    fontSize: 22,
   },
   featuresContainer: {
-    marginTop: 8,
+    marginBottom: 16,
   },
   featureRow: {
     flexDirection: 'row',
@@ -105,21 +191,67 @@ const styles = StyleSheet.create({
   },
   featureText: {
     fontSize: 14,
-    color: Colors.light.text,
+    color: Colors.light.textSecondary,
+    marginLeft: 8,
+    flex: 1,
+  },
+  featureTextTablet: {
+    fontSize: 16,
+    marginLeft: 10,
+  },
+  limitContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  limitText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
     marginLeft: 8,
   },
-  selectedBadge: {
+  limitTextTablet: {
+    fontSize: 16,
+    marginLeft: 10,
+  },
+  actionContainer: {
+    marginTop: 8,
+  },
+  subscribeButton: {
+    backgroundColor: Colors.light.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  subscribeButtonTablet: {
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+  },
+  subscribeButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  subscribeButtonTextTablet: {
+    fontSize: 18,
+  },
+  selectedIndicator: {
     position: 'absolute',
     top: 12,
     right: 12,
     backgroundColor: Colors.light.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
     borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  selectedText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
+  selectedIndicatorTablet: {
+    top: 16,
+    right: 16,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
   },
 });

@@ -17,6 +17,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useAuthStore } from '@/store/authStore';
 import { sanitizeInput } from '@/utils/validationUtils';
@@ -25,7 +26,8 @@ const { width, height } = Dimensions.get('window');
 
 export default function SignInScreen() {
   const router = useRouter();
-  const { signIn, isLoading, error } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const { signIn, isLoading, error, sendPasswordReset } = useAuthStore();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -106,9 +108,23 @@ export default function SignInScreen() {
       );
       
     } catch (error: any) {
-      console.log('Sign in error:', error.message);
-    } finally {
-      setLoading(false);
+      if (__DEV__) {
+        console.log("Sign in error:", error.message);
+      }
+      
+      // Show error message to user
+      let errorMessage = "Sign in failed. Please try again.";
+      
+      if (error.message === "auth/user-not-found" || error.message === "auth/wrong-password") {
+        errorMessage = "Invalid email or password. Please check your credentials.";
+      } else if (error.message.includes("network")) {
+        errorMessage = "Network error. Please check your internet connection.";
+      } else {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert("Sign In Failed", errorMessage, [{ text: "OK" }]);
+    } finally {      setLoading(false);
     }
   };
 
@@ -116,14 +132,56 @@ export default function SignInScreen() {
     router.push('/auth/signup' as any);
   };
 
-  const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'Please contact support at support@biztomate.com to reset your password.',
-      [{ text: 'OK' }]
+  const handleForgotPassword = async () => {
+    Alert.prompt(
+      "Reset Password",
+      "Enter your email address to receive a password reset link:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send Reset Link",
+          onPress: async (email) => {
+            if (!email || !/\S+@\S+\.\S+/.test(email)) {
+              Alert.alert("Invalid Email", "Please enter a valid email address.");
+              return;
+            }
+
+            setLoading(true);
+            
+            try {
+              await sendPasswordReset(email);
+              
+              Alert.alert(
+                "Reset Link Sent",
+                "A password reset link has been sent to your email address.",
+                [{ text: "OK" }]
+              );
+    } catch (error: any) {
+      if (__DEV__) {
+        console.log("Sign in error:", error.message);
+      }
+      
+      // Show error message to user
+      let errorMessage = "Sign in failed. Please try again.";
+      
+      if (error.message === "auth/user-not-found" || error.message === "auth/wrong-password") {
+        errorMessage = "Invalid email or password. Please check your credentials.";
+      } else if (error.message.includes("network")) {
+        errorMessage = "Network error. Please check your internet connection.";
+      } else {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert("Sign In Failed", errorMessage, [{ text: "OK" }]);
+    } finally {              setLoading(false);
+            }
+          }
+        }
+      ],
+      "plain-text",
+      formData.email || ""
     );
   };
-
   const handleBack = () => {
     router.back();
   };
@@ -138,13 +196,19 @@ export default function SignInScreen() {
 
   return (
     <KeyboardAvoidingView 
-      style={styles.container} 
+      style={[
+        styles.container,
+        { 
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom 
+        }
+      ]} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
       <LinearGradient
-        colors={[Colors.light.primary, '#4F46E5', '#7C3AED']}
+        colors={['#FFFFFF', '#FFFFFF']}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -152,15 +216,17 @@ export default function SignInScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="white" />
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Sign In</Text>
+          <View style={styles.placeholder} />
         </View>
 
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.logoContainer}>
             <View style={styles.logoBackground}>
-              <Ionicons name="flash" size={32} color="white" />
+              <Ionicons name="flash" size={32} color={Colors.light.primary} />
             </View>
             <Text style={styles.appName}>Biztomate</Text>
           </View>
@@ -170,7 +236,7 @@ export default function SignInScreen() {
 
           {error && (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Ionicons name="alert-circle" size={20} color={Colors.light.error} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
@@ -237,7 +303,7 @@ export default function SignInScreen() {
                 onPress={() => setRememberMe(!rememberMe)}
               >
                 <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
-                  {rememberMe && <Ionicons name="checkmark" size={16} color="white" />}
+                  {rememberMe && <Ionicons name="checkmark" size={16} color={Colors.light.primary} />}
                 </View>
                 <Text style={styles.rememberMeText}>Remember me</Text>
               </TouchableOpacity>
@@ -254,13 +320,13 @@ export default function SignInScreen() {
               disabled={loading || isLoading}
             >
               <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
+                colors={[Colors.light.primary, Colors.light.secondary]}
                 style={styles.buttonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
                 {(loading || isLoading) ? (
-                  <ActivityIndicator color="white" />
+                  <ActivityIndicator color={Colors.light.primary} />
                 ) : (
                   <Text style={styles.signInButtonText}>Sign In</Text>
                 )}
@@ -280,16 +346,8 @@ export default function SignInScreen() {
                 style={styles.socialButton}
                 onPress={() => handleSocialSignIn('Google')}
               >
-                <Ionicons name="logo-google" size={24} color="#DB4437" />
+                <Ionicons name="logo-google" size={24} color={Colors.light.google.red} />
                 <Text style={styles.socialButtonText}>Google</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.socialButton}
-                onPress={() => handleSocialSignIn('Apple')}
-              >
-                <Ionicons name="logo-apple" size={24} color="#000000" />
-                <Text style={styles.socialButtonText}>Apple</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -322,17 +380,38 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: Colors.light.card,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 1,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+  },
+  placeholder: {
+    width: 40,
   },
   content: {
     flex: 1,
@@ -347,27 +426,32 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: Colors.light.card,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   appName: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
     textAlign: 'center',
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
   },
@@ -382,7 +466,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   errorText: {
-    color: '#DC2626',
+    color: Colors.light.error,
     fontSize: 14,
     marginLeft: 8,
     flex: 1,
@@ -396,22 +480,27 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'white',
+    color: Colors.light.text,
     marginBottom: 8,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: Colors.light.background,
     borderRadius: 12,
     paddingHorizontal: 16,
     height: 56,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: Colors.light.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   inputError: {
-    borderColor: '#DC2626',
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    borderColor: Colors.light.error,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
   inputIcon: {
     marginRight: 12,
@@ -419,7 +508,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: 'white',
+    color: Colors.light.text,
   },
   eyeButton: {
     padding: 4,
@@ -439,22 +528,22 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: Colors.light.border,
     marginRight: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkboxChecked: {
-    backgroundColor: 'white',
-    borderColor: 'white',
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   rememberMeText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
   },
   forgotPasswordText: {
     fontSize: 14,
-    color: 'white',
+    color: Colors.light.primary,
     fontWeight: '600',
   },
   signInButton: {
@@ -467,7 +556,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signInButtonText: {
-    color: 'white',
+    color: Colors.light.background,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -482,11 +571,11 @@ const styles = StyleSheet.create({
   divider: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: Colors.light.border,
   },
   dividerText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: Colors.light.textSecondary,
     marginHorizontal: 16,
   },
   socialButtonsContainer: {
@@ -499,16 +588,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: Colors.light.background,
     borderRadius: 12,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: Colors.light.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   socialButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'white',
+    color: Colors.light.text,
     marginLeft: 8,
   },
   footer: {
@@ -518,10 +612,10 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
   },
   linkText: {
-    color: 'white',
+    color: Colors.light.primary,
     fontWeight: '600',
   },
 }); 

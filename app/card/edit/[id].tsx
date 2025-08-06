@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import Button from '@/components/Button';
@@ -20,6 +21,7 @@ import { isValidEmail, isValidPhone, isValidWebsite } from '@/utils/ocrUtils';
 export default function EditCardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { getCard, updateCard } = useCardStore();
   
   const card = getCard(id);
@@ -135,7 +137,13 @@ export default function EditCardScreen() {
   };
   
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <View style={styles.imageSection}>
         {formData.imageUri ? (
           <View style={styles.imageContainer}>

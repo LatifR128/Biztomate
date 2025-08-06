@@ -1,87 +1,164 @@
-import React, { Component, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Platform
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Colors from '@/constants/colors';
 
 interface Props {
   children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
   hasError: boolean;
-  error?: Error;
-  errorInfo?: React.ErrorInfo;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return {
+      hasError: true,
+      error,
+      errorInfo: null
+    };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('🚨 Error Boundary caught an error:', error, errorInfo);
     
-    this.setState({ errorInfo });
-    
-    // In production, you might want to send this to a crash reporting service
+    this.setState({
+      error,
+      errorInfo
+    });
+
+    // Log error to console for debugging
     if (__DEV__) {
+      console.group('🚨 Error Boundary Details');
+      console.error('Error:', error);
+      console.error('Error Info:', errorInfo);
+      console.error('Component Stack:', errorInfo.componentStack);
+      console.groupEnd();
+    }
+
+    // In production, you could send this to a crash reporting service
+    // if (Config.errorReporting.enabled) {
+    //   // Send to crash reporting service
+    // }
+  }
+
+  handleRetry = () => {
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null
+    });
+  };
+
+  handleReportError = () => {
+    const { error, errorInfo } = this.state;
+    
+    if (error) {
       Alert.alert(
-        'App Error',
-        'An unexpected error occurred. Please restart the app.',
+        'Report Error',
+        'Would you like to report this error to help us improve the app?',
         [
           {
-            text: 'OK',
-            onPress: () => this.setState({ hasError: false })
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Report',
+            onPress: () => {
+              // In a real app, you would send this to your backend
+              console.log('Error reported:', {
+                message: error.message,
+                stack: error.stack,
+                componentStack: errorInfo?.componentStack,
+                platform: Platform.OS,
+                version: Platform.Version
+              });
+              
+              Alert.alert(
+                'Thank You',
+                'Error reported successfully. We appreciate your help!',
+                [{ text: 'OK' }]
+              );
+            }
           }
         ]
       );
     }
-  }
-
-  handleRetry = () => {
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
-  };
-
-  handleRestart = () => {
-    // In a real app, you might want to restart the app
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
   };
 
   render() {
     if (this.state.hasError) {
+      // Custom fallback UI
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
       return (
         <View style={styles.container}>
-          <View style={styles.content}>
-            <Text style={styles.icon}>⚠️</Text>
-            <Text style={styles.title}>Oops! Something went wrong</Text>
-            <Text style={styles.message}>
-              We encountered an unexpected error. Please try again or restart the app.
-            </Text>
-            
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity style={styles.retryButton} onPress={this.handleRetry}>
-                <Text style={styles.retryText}>Try Again</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.restartButton} onPress={this.handleRestart}>
-                <Text style={styles.restartText}>Restart App</Text>
-              </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            {/* Error Icon */}
+            <View style={styles.iconContainer}>
+              <Ionicons name="alert-circle" size={80} color={Colors.light.error} />
             </View>
+
+            {/* Error Title */}
+            <Text style={styles.title}>Oops! Something went wrong</Text>
             
+            {/* Error Message */}
+            <Text style={styles.message}>
+              We're sorry, but something unexpected happened. Don't worry, your data is safe.
+            </Text>
+
+            {/* Error Details (only in development) */}
             {__DEV__ && this.state.error && (
-              <View style={styles.debugContainer}>
-                <Text style={styles.debugTitle}>Debug Info:</Text>
-                <Text style={styles.debugText}>Error: {this.state.error.message}</Text>
-                {this.state.errorInfo && (
-                  <Text style={styles.debugText}>Component: {this.state.errorInfo.componentStack}</Text>
+              <View style={styles.errorDetails}>
+                <Text style={styles.errorDetailsTitle}>Error Details (Development):</Text>
+                <Text style={styles.errorText}>{this.state.error.message}</Text>
+                {this.state.error.stack && (
+                  <Text style={styles.errorStack}>{this.state.error.stack}</Text>
                 )}
               </View>
             )}
-          </View>
+
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity style={styles.retryButton} onPress={this.handleRetry}>
+                <Ionicons name="refresh" size={20} color="white" />
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.reportButton} onPress={this.handleReportError}>
+                <Ionicons name="bug" size={20} color={Colors.light.primary} />
+                <Text style={styles.reportButtonText}>Report Error</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Help Text */}
+            <Text style={styles.helpText}>
+              If the problem persists, please contact our support team.
+            </Text>
+          </ScrollView>
         </View>
       );
     }
@@ -94,74 +171,93 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 40,
   },
-  content: {
-    alignItems: 'center',
-    maxWidth: 300,
-  },
-  icon: {
-    fontSize: 64,
-    marginBottom: 20,
+  iconContainer: {
+    marginBottom: 24,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.light.text,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   message: {
     fontSize: 16,
     color: Colors.light.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 30,
+    lineHeight: 24,
+    marginBottom: 32,
+  },
+  errorDetails: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    width: '100%',
+  },
+  errorDetailsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 12,
+    color: Colors.light.error,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 8,
+  },
+  errorStack: {
+    fontSize: 10,
+    color: Colors.light.textSecondary,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   buttonContainer: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 24,
   },
   retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.light.primary,
-    paddingHorizontal: 20,
+    borderRadius: 12,
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    gap: 8,
   },
-  retryText: {
+  retryButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
-  restartButton: {
-    backgroundColor: Colors.light.secondary,
-    paddingHorizontal: 20,
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.light.primary,
+    borderRadius: 12,
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    gap: 8,
   },
-  restartText: {
-    color: 'white',
+  reportButtonText: {
+    color: Colors.light.primary,
     fontSize: 16,
     fontWeight: '600',
   },
-  debugContainer: {
-    marginTop: 30,
-    padding: 15,
-    backgroundColor: Colors.light.card,
-    borderRadius: 8,
-    width: '100%',
-  },
-  debugTitle: {
+  helpText: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-    marginBottom: 8,
-  },
-  debugText: {
-    fontSize: 12,
     color: Colors.light.textSecondary,
-    fontFamily: 'monospace',
+    textAlign: 'center',
   },
 }); 

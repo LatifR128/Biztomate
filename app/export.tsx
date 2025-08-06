@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
 import { useUserStore } from '@/store/userStore';
@@ -26,13 +27,14 @@ import {
 
 export default function ExportScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { cards } = useCardStore();
   const { user } = useUserStore();
   const [isExporting, setIsExporting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [exportType, setExportType] = useState<'csv' | 'sheets' | 'excel'>('csv');
   
-  const isPremiumUser = user.subscriptionPlan !== 'free';
+  const isPremiumUser = user?.subscriptionPlan !== 'free';
   const [googleConnected, setGoogleConnected] = useState(false);
   const [excelConnected, setExcelConnected] = useState(false);
   
@@ -161,7 +163,13 @@ export default function ExportScreen() {
   };
   
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <View style={styles.header}>
         <Text style={styles.title}>Export Cards</Text>
         <Text style={styles.subtitle}>

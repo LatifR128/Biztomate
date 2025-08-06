@@ -1,15 +1,28 @@
 import { Platform, Alert } from 'react-native';
-import * as InAppPurchases from 'expo-in-app-purchases';
+import {
+  initConnection,
+  endConnection,
+  getProducts,
+  requestPurchase,
+  finishTransaction,
+  getAvailablePurchases,
+  Product,
+  Purchase,
+  PurchaseError,
+  SubscriptionPurchase,
+  ProductPurchase
+} from 'react-native-iap';
 import { SUBSCRIPTION_PLANS } from '@/constants/subscriptions';
 
 // In-App Purchase Status
 export interface PurchaseStatus {
   isAvailable: boolean;
   canMakePayments: boolean;
-  products: Product[];
+  products: ProductInfo[];
+  error?: string;
 }
 
-export interface Product {
+export interface ProductInfo {
   id: string;
   title: string;
   description: string;
@@ -41,11 +54,14 @@ export interface ReceiptValidationResult {
     environment?: string;
   };
   error?: string;
+  statusCode?: number;
+  message?: string;
 }
 
 // Initialize in-app purchases
 let isInitialized = false;
-let cachedProducts: Product[] = [];
+let cachedProducts: ProductInfo[] = [];
+let productsLoaded = false;
 
 /**
  * Initialize in-app purchases
@@ -56,7 +72,7 @@ export const initializeInAppPurchases = async (): Promise<void> => {
   }
 
   try {
-    await InAppPurchases.connectAsync();
+    await initConnection();
     isInitialized = true;
     console.log('In-app purchases initialized successfully');
   } catch (error) {
@@ -74,8 +90,9 @@ export const disconnectInAppPurchases = async (): Promise<void> => {
   }
 
   try {
-    await InAppPurchases.disconnectAsync();
+    await endConnection();
     isInitialized = false;
+    productsLoaded = false;
     console.log('In-app purchases disconnected');
   } catch (error) {
     console.error('Failed to disconnect in-app purchases:', error);
@@ -83,7 +100,7 @@ export const disconnectInAppPurchases = async (): Promise<void> => {
 };
 
 /**
- * Check in-app purchase availability
+ * Check in-app purchase availability and load products
  */
 export const checkInAppPurchaseAvailability = async (): Promise<PurchaseStatus> => {
   if (Platform.OS !== 'ios') {
@@ -91,6 +108,7 @@ export const checkInAppPurchaseAvailability = async (): Promise<PurchaseStatus> 
       isAvailable: false,
       canMakePayments: false,
       products: [],
+      error: 'In-app purchases are only available on iOS',
     };
   }
 
@@ -109,51 +127,66 @@ export const checkInAppPurchaseAvailability = async (): Promise<PurchaseStatus> 
     console.log('Fetching products from App Store:', productIds);
     
     // Fetch products from App Store
-    const { responseCode, results } = await InAppPurchases.getProductsAsync(productIds);
+    const products = await getProducts({ skus: productIds });
     
-    console.log('Product fetch response:', { responseCode, resultsCount: results?.length });
+    console.log('Product fetch response:', { productsCount: products?.length });
     
-    if (responseCode === InAppPurchases.IAPResponseCode.OK && results && results.length > 0) {
-      const products: Product[] = results.map(product => ({
+    if (products && products.length > 0) {
+      const productInfos: ProductInfo[] = products.map(product => ({
         id: product.productId,
         title: product.title,
         description: product.description,
-        price: product.price,
+        price: product.localizedPrice,
         priceAmount: parseFloat(product.price.replace(/[^0-9.]/g, '')),
-        currency: product.priceCurrencyCode || 'USD',
+        currency: product.currency || 'USD',
       }));
 
       // Cache the products for later use
-      cachedProducts = products;
+      cachedProducts = productInfos;
+      productsLoaded = true;
 
-      console.log('Successfully fetched products:', products.length);
+      console.log('Successfully fetched products:', productInfos.length);
       return {
         isAvailable: true,
         canMakePayments: true,
-        products,
+        products: productInfos,
       };
     } else {
-      console.error('Failed to fetch products. Response code:', responseCode);
-      
-      // Handle response code
-      const errorMessage = `Products not available (Response code: ${responseCode})`;
-      
-      console.error('Product fetch error:', errorMessage);
+      console.error('Failed to fetch products - no products returned from App Store');
+      productsLoaded = false;
       
       return {
         isAvailable: false,
         canMakePayments: true,
         products: [],
+        error: 'Products not available. Please try again later.',
       };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error checking in-app purchase availability:', error);
+    productsLoaded = false;
+    
     return {
       isAvailable: false,
       canMakePayments: false,
       products: [],
+      error: error.message || 'Failed to load products',
     };
   }
+};
+
+/**
+ * Get cached products if available
+ */
+export const getCachedProducts = (): ProductInfo[] => {
+  return cachedProducts;
+};
+
+/**
+ * Check if products are loaded
+ */
+export const areProductsLoaded = (): boolean => {
+  return productsLoaded;
 };
 
 /**
@@ -173,86 +206,55 @@ export const purchaseSubscription = async (productId: string): Promise<PurchaseR
       await initializeInAppPurchases();
     }
 
+    // Check if products are loaded
+    if (!productsLoaded) {
+      const status = await checkInAppPurchaseAvailability();
+      if (!status.isAvailable) {
+        return {
+          success: false,
+          error: status.error || 'Products not available. Please try again later.',
+        };
+      }
+    }
+
     console.log('Processing in-app purchase for product:', productId);
     
-    // First, verify the product is available
-    const { responseCode: queryResponseCode, results: queryResults } = await InAppPurchases.getProductsAsync([productId]);
-    
-    if (queryResponseCode !== InAppPurchases.IAPResponseCode.OK || !queryResults || queryResults.length === 0) {
-      console.error('Product not available in store. Response code:', queryResponseCode);
+    // Verify the product is available in cached products
+    const productExists = cachedProducts.find(p => p.id === productId);
+    if (!productExists) {
+      console.error('Product not found in cached products:', productId);
       return {
         success: false,
-        error: `Product not available in store. Response code: ${queryResponseCode}`,
+        error: 'Product not available in store. Please try again later.',
       };
     }
     
     console.log('Product verified, proceeding with purchase...');
     
-    // Set up purchase listener
-    let purchaseCompleted = false;
-    let purchaseError: string | null = null;
+    // Request the purchase
+    const purchase = await requestPurchase({ sku: productId });
     
-    const purchaseListener = (result: any) => {
-      console.log('Purchase listener triggered:', result);
+    if (purchase && Array.isArray(purchase) && purchase.length > 0) {
+      const purchaseItem = purchase[0];
+      // Finish the transaction
+      await finishTransaction({ purchase: purchaseItem });
       
-      if (result.responseCode === InAppPurchases.IAPResponseCode.OK && result.results) {
-        purchaseCompleted = true;
-        console.log('Purchase successful:', result.results);
-      } else {
-        purchaseError = `Purchase failed: ${result.errorCode || 'Unknown error'}`;
-        console.error('Purchase failed:', result);
-      }
-    };
-    
-    InAppPurchases.setPurchaseListener(purchaseListener);
-    
-    try {
-      // Initiate the purchase
-      console.log('Initiating purchase for product:', productId);
-      await InAppPurchases.purchaseItemAsync(productId);
-      
-      // Wait for purchase completion or timeout
-      let attempts = 0;
-      const maxAttempts = 30; // 30 seconds
-      
-      while (!purchaseCompleted && !purchaseError && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        attempts++;
-      }
-      
-      if (purchaseError) {
-        return {
-          success: false,
-          error: purchaseError,
-        };
-      }
-      
-      if (!purchaseCompleted) {
-        return {
-          success: false,
-          error: 'Purchase timeout - please try again',
-        };
-      }
-      
-      // For development/testing, simulate a successful purchase
-      const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const receiptData = generateMockReceipt(productId, transactionId);
-      
-      console.log('In-app purchase successful (simulated)');
+      console.log('In-app purchase successful:', purchaseItem);
       
       return {
         success: true,
-        transactionId,
-        productId,
-        receiptData,
-        originalTransactionId: transactionId,
-        purchaseDate: new Date().toISOString(),
-        expiresDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
+        transactionId: purchaseItem.transactionId,
+        productId: purchaseItem.productId,
+        receiptData: purchaseItem.transactionReceipt,
+        originalTransactionId: purchaseItem.originalTransactionIdentifierIOS,
+        purchaseDate: String(purchaseItem.transactionDate || Date.now()),
+        expiresDate: purchaseItem.expirationDateIos ? String(purchaseItem.expirationDateIos) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       };
-
-    } finally {
-      // Clean up the listener
-      InAppPurchases.setPurchaseListener(() => {});
+    } else {
+      return {
+        success: false,
+        error: 'Purchase was cancelled or failed',
+      };
     }
 
   } catch (error: any) {
@@ -261,14 +263,16 @@ export const purchaseSubscription = async (productId: string): Promise<PurchaseR
     // Handle specific error codes
     let errorMessage = 'Purchase failed';
     
-    if (error.message?.includes('Product not available')) {
-      errorMessage = 'This product is not available in the App Store. Please check your App Store configuration.';
-    } else if (error.message?.includes('User cancelled')) {
+    if (error.code === 'E_ALREADY_OWNED') {
+      errorMessage = 'You already own this product';
+    } else if (error.code === 'E_USER_CANCELLED') {
       errorMessage = 'Purchase was cancelled';
-    } else if (error.message?.includes('Payment not allowed')) {
-      errorMessage = 'In-app purchases are not allowed on this device';
-    } else if (error.message?.includes('Network error')) {
-      errorMessage = 'Network error. Please check your internet connection and try again.';
+    } else if (error.code === 'E_ITEM_UNAVAILABLE') {
+      errorMessage = 'This product is not available in the App Store';
+    } else if (error.code === 'E_NETWORK_ERROR') {
+      errorMessage = 'Network error. Please check your internet connection and try again';
+    } else if (error.message?.includes('Product not available')) {
+      errorMessage = 'Product not available in store. Please try again later.';
     }
     
     return {
@@ -276,56 +280,6 @@ export const purchaseSubscription = async (productId: string): Promise<PurchaseR
       error: errorMessage,
     };
   }
-};
-
-/**
- * Generate mock receipt for sandbox testing
- */
-const generateMockReceipt = (productId: string, transactionId: string): string => {
-  const receipt = {
-    receipt_type: "ProductionSandbox",
-    bundle_id: "com.biztomate.scanner",
-    application_version: "1.3.3",
-    original_application_version: "1.3.3",
-    in_app: [
-      {
-        quantity: "1",
-        product_id: productId,
-        transaction_id: transactionId,
-        original_transaction_id: transactionId,
-        purchase_date: new Date().toISOString(),
-        purchase_date_ms: Date.now().toString(),
-        purchase_date_pst: new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-        original_purchase_date: new Date().toISOString(),
-        original_purchase_date_ms: Date.now().toString(),
-        original_purchase_date_pst: new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-        expires_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        expires_date_ms: (Date.now() + 365 * 24 * 60 * 60 * 1000).toString(),
-        expires_date_pst: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-        web_order_line_item_id: Math.floor(Math.random() * 1000000).toString(),
-        is_trial_period: "false",
-        is_in_intro_offer_period: "false",
-        subscription_group_identifier: "21482456"
-      }
-    ],
-    version_external_identifier: "0",
-    receipt_creation_date: new Date().toISOString(),
-    receipt_creation_date_ms: Date.now().toString(),
-    receipt_creation_date_pst: new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-    request_date: new Date().toISOString(),
-    request_date_ms: Date.now().toString(),
-    request_date_pst: new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-    original_purchase_date: new Date().toISOString(),
-    original_purchase_date_ms: Date.now().toString(),
-    original_purchase_date_pst: new Date().toLocaleString("en-US", {timeZone: "America/Los_Angeles"}),
-    adam_id: 0,
-    download_id: 0,
-    app_item_id: 0,
-    version_bundle_id: "com.biztomate.scanner"
-  };
-
-  // Convert to base64 encoded string (simulating Apple's receipt format)
-  return Buffer.from(JSON.stringify(receipt)).toString('base64');
 };
 
 /**
@@ -347,21 +301,28 @@ export const restorePurchases = async (): Promise<PurchaseResult[]> => {
 
     console.log('Restoring purchases...');
     
-    // For now, simulate restored purchases for testing
-    const mockRestoredPurchases: PurchaseResult[] = [
-      {
+    const purchases = await getAvailablePurchases();
+    
+    if (purchases && purchases.length > 0) {
+      const results: PurchaseResult[] = purchases.map(purchase => ({
         success: true,
-        transactionId: `txn_restore_${Date.now()}`,
-        productId: 'com.biztomate.scanner.basic',
-        receiptData: generateMockReceipt('com.biztomate.scanner.basic', `txn_restore_${Date.now()}`),
-        originalTransactionId: `txn_restore_${Date.now()}`,
-        purchaseDate: new Date().toISOString(),
-        expiresDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-      }
-    ];
+        transactionId: purchase.transactionId,
+        productId: purchase.productId,
+        receiptData: purchase.transactionReceipt,
+        originalTransactionId: purchase.originalTransactionIdentifierIOS,
+        purchaseDate: String(purchase.transactionDate || Date.now()),
+        expiresDate: purchase.expirationDateIos ? String(purchase.expirationDateIos) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      }));
 
-    console.log('Restored purchases:', mockRestoredPurchases.length);
-    return mockRestoredPurchases;
+      console.log('Restored purchases:', results.length);
+      return results;
+    } else {
+      console.log('No purchases found to restore');
+      return [{
+        success: false,
+        error: 'No previous purchases found',
+      }];
+    }
 
   } catch (error: any) {
     console.error('Restore purchases error:', error);
@@ -374,14 +335,14 @@ export const restorePurchases = async (): Promise<PurchaseResult[]> => {
 };
 
 /**
- * Validate receipt on server with improved sandbox handling
+ * Validate receipt on server with proper Apple guidelines implementation
  */
 export const validateReceipt = async (receiptData: string): Promise<ReceiptValidationResult> => {
   try {
     console.log('Validating receipt on server...');
     
-    // Send receipt to our server for validation
-    const response = await fetch('/api/receipt-validation', {
+    // First try production endpoint
+    const productionResponse = await fetch('/api/receipt-validation', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -389,34 +350,86 @@ export const validateReceipt = async (receiptData: string): Promise<ReceiptValid
       body: JSON.stringify({
         receiptData,
         password: process.env.APP_STORE_SHARED_SECRET,
+        environment: 'production',
       }),
     });
 
-    const result = await response.json();
+    const productionResult = await productionResponse.json();
     
-    if (!response.ok) {
-      console.error('Receipt validation failed:', result);
+    // If production validation succeeds
+    if (productionResponse.ok && productionResult.success) {
+      console.log('Receipt validation successful (production):', {
+        environment: productionResult.environment,
+        endpoint: productionResult.endpoint,
+        subscriptionValid: productionResult.subscription?.isValid,
+      });
+
       return {
-        success: false,
-        error: result.error || 'Receipt validation failed',
-        endpoint: result.endpoint,
+        success: true,
+        environment: productionResult.environment,
+        endpoint: productionResult.endpoint,
+        subscription: productionResult.subscription,
+        statusCode: productionResult.statusCode,
+        message: productionResult.message,
       };
     }
+    
+    // If production validation fails with error code 21007 (sandbox receipt), try sandbox
+    if (productionResult.statusCode === 21007) {
+      console.log('Production validation failed with 21007, trying sandbox...');
+      
+      const sandboxResponse = await fetch('/api/receipt-validation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          receiptData,
+          password: process.env.APP_STORE_SHARED_SECRET,
+          environment: 'sandbox',
+        }),
+      });
 
-    console.log('Receipt validation successful:', {
-      environment: result.environment,
-      endpoint: result.endpoint,
-      subscriptionValid: result.subscription?.isValid,
-    });
+      const sandboxResult = await sandboxResponse.json();
+      
+      if (sandboxResponse.ok && sandboxResult.success) {
+        console.log('Receipt validation successful (sandbox):', {
+          environment: sandboxResult.environment,
+          endpoint: sandboxResult.endpoint,
+          subscriptionValid: sandboxResult.subscription?.isValid,
+        });
 
+        return {
+          success: true,
+          environment: sandboxResult.environment,
+          endpoint: sandboxResult.endpoint,
+          subscription: sandboxResult.subscription,
+          statusCode: sandboxResult.statusCode,
+          message: sandboxResult.message,
+        };
+      } else {
+        console.error('Sandbox receipt validation failed:', sandboxResult);
+        return {
+          success: false,
+          error: sandboxResult.error || 'Receipt validation failed',
+          endpoint: 'sandbox',
+          statusCode: sandboxResult.statusCode,
+          message: sandboxResult.message,
+        };
+      }
+    }
+    
+    // If production validation failed for other reasons
+    console.error('Production receipt validation failed:', productionResult);
     return {
-      success: true,
-      environment: result.environment,
-      endpoint: result.endpoint,
-      subscription: result.subscription,
+      success: false,
+      error: productionResult.error || 'Receipt validation failed',
+      endpoint: 'production',
+      statusCode: productionResult.statusCode,
+      message: productionResult.message,
     };
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('Receipt validation error:', error);
     
     // For development/testing, simulate successful validation
@@ -436,12 +449,15 @@ export const validateReceipt = async (receiptData: string): Promise<ReceiptValid
           isExpired: false,
           environment: 'sandbox',
         },
+        statusCode: 0,
+        message: 'Development mode - simulated validation',
       };
     }
     
     return {
       success: false,
       error: 'Failed to validate receipt',
+      message: error.message || 'Network error during validation',
     };
   }
 };

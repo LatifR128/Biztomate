@@ -9,7 +9,7 @@ export const trpc = createTRPCReact<AppRouter>();
 export const trpcClient = trpc.createClient({
   links: [
     httpLink({
-      url: "http://localhost:3000/trpc",
+      url: __DEV__ ? "http://localhost:3000/trpc" : "https://api.biztomate.com/trpc",
       transformer: superjson,
       // Add error handling and retry logic
       fetch: async (url, options) => {
@@ -21,7 +21,7 @@ export const trpcClient = trpc.createClient({
           return response;
         } catch (error) {
           console.error('tRPC request failed:', error);
-          // Return a mock response for development
+          // Return a mock response for development/production fallback
           return new Response(JSON.stringify({
             result: {
               data: null,

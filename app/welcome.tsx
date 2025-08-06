@@ -9,26 +9,43 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import { useUserStore } from '@/store/userStore';
+import { useAuthStore } from '@/store/authStore';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { initializeUser } = useUserStore();
   
-  const handleGetStarted = () => {
-    initializeUser();
-    router.replace('/(tabs)');
+  const handleGetStarted = async () => {
+    try {
+      // Navigate to auth screen for real authentication
+      router.replace('/auth');
+    } catch (error) {
+      console.error('Error starting app:', error);
+    }
   };
   
-  const handleViewPlans = () => {
-    initializeUser();
-    router.replace('/subscription');
+  const handleViewPlans = async () => {
+    try {
+      // Navigate to auth screen for real authentication
+      router.replace('/auth');
+    } catch (error) {
+      console.error('Error starting app:', error);
+    }
   };
   
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[
+      styles.container,
+      { 
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom 
+      }
+    ]}>
       <View style={styles.header}>
         <View style={styles.logoContainer}>
           <View style={styles.logo}>
@@ -48,7 +65,7 @@ export default function WelcomeScreen() {
 
       <View style={styles.trialBanner}>
         <View style={styles.trialHeader}>
-          <Ionicons name="star" size={24} color="#FFD700" />
+          <Ionicons name="star" size={24} color={Colors.light.warning} />
           <Text style={styles.trialTitle}>Start Your FREE 3-Day Trial</Text>
         </View>
         <Text style={styles.trialSubtitle}>
@@ -134,7 +151,7 @@ export default function WelcomeScreen() {
 
       <View style={styles.qrSection}>
         <Text style={styles.qrTitle}>Share with Friends</Text>
-        <Ionicons name="image" source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://biztomatescanner.app/welcome' }}
+        <Image source={{ uri: 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://biztomatescanner.app/welcome' }}
           style={styles.qrCode}
         />
         <Text style={styles.qrDescription}>Scan to download Biztomate</Text>
