@@ -16,7 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
       "buildNumber": "128",
-      "googleServicesFile": "ios/Biztomate/GoogleService-Info.plist",
+      "googleServicesFile": "GOOGLE_SERVICES_IOS",
       "infoPlist": {
         "NSCameraUsageDescription": "Biztomate needs camera access to scan business cards and extract contact information.",
         "NSPhotoLibraryUsageDescription": "Biztomate needs photo library access to select business card images for processing.",
@@ -62,7 +62,7 @@
       [
         "@react-native-firebase/app",
         {
-          "iosGoogleServicesFile": "ios/Biztomate/GoogleService-Info.plist"
+          "iosGoogleServicesFile": "GOOGLE_SERVICES_IOS"
         }
       ],
       [
