@@ -5,7 +5,8 @@ import {
   signInWithCredential, 
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  signInWithPopup
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -38,6 +39,58 @@ export interface AuthResult {
 // Google Sign-In
 export const signInWithGoogle = async (): Promise<AuthResult> => {
   try {
+    // Web (Expo Web): use Firebase Auth popup flow
+    if (Platform.OS === 'web') {
+      if (!auth) throw new Error('Firebase auth not initialized');
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      // Create user document in Firestore
+      if (db && user) {
+        await setDoc(doc(db, 'users', user.uid), {
+          email: user.email,
+          name: user.displayName || 'User',
+          photoURL: user.photoURL || undefined,
+          subscriptionPlan: 'free',
+          trialEndDate: Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days trial
+          scannedCards: 0,
+          maxCards: 5,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          provider: 'google',
+        });
+      }
+
+      // Save user data to local storage
+      const userData: UserData = {
+        id: user.uid,
+        email: user.email || '',
+        name: user.displayName || 'User',
+        photoURL: user.photoURL || undefined,
+        subscriptionPlan: 'free',
+        trialEndDate: Date.now() + (7 * 24 * 60 * 60 * 1000),
+        scannedCards: 0,
+        maxCards: 5,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        provider: 'google',
+      };
+      await userDataStorage.saveUserProfile(userData);
+
+      return {
+        success: true,
+        user: {
+          id: user.uid,
+          email: user.email || '',
+          name: user.displayName || 'User',
+          photoURL: user.photoURL || undefined,
+          provider: 'google',
+        },
+      };
+    }
+
+    // Native (iOS/Android): use GoogleSignin
     // Check if device supports Google Play Services (Android)
     if (Platform.OS === 'android') {
       await GoogleSignin.hasPlayServices();
