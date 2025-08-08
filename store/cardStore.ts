@@ -16,6 +16,7 @@ import {
 import { auth, db } from '@/lib/firebase';
 import { BusinessCard } from '@/types';
 import { processBusinessCard, normalizeForComparison } from '@/utils/ocrUtils';
+import { userDataStorage } from '@/utils/userDataStorage';
 
 interface CardState {
   cards: BusinessCard[];
@@ -45,9 +46,22 @@ export const useCardStore = create<CardState>((set, get) => ({
     try {
       console.log('🚀 Adding card to store:', card.name);
       
+      // Validate card data
+      if (!card || !card.name || !card.id) {
+        console.error('❌ Invalid card data:', card);
+        return false;
+      }
+      
       const currentUser = auth?.currentUser;
       if (!currentUser) {
-        throw new Error('User not authenticated');
+        console.log('⚠️ User not authenticated, adding to local storage only');
+        // Add to local state only if not authenticated
+        set(state => ({
+          cards: [...state.cards, card],
+          isLoading: false,
+          error: null
+        }));
+        return true;
       }
 
       // Add to local state immediately for faster UI response
@@ -81,15 +95,11 @@ export const useCardStore = create<CardState>((set, get) => ({
           // Don't fail the operation - card is already in local state
         }
       }
-
+      
       return true;
-
-    } catch (error: any) {
-      console.error('❌ Add card error:', error);
-      set({ 
-        error: error.message || 'Failed to add card', 
-        isLoading: false 
-      });
+    } catch (error) {
+      console.error('❌ Error adding card:', error);
+      set({ error: 'Failed to add card' });
       return false;
     }
   },
@@ -180,15 +190,28 @@ export const useCardStore = create<CardState>((set, get) => ({
 
   loadCards: async () => {
     try {
+      console.log('🚀 Loading cards...');
       set({ isLoading: true, error: null });
       
       const currentUser = auth?.currentUser;
       if (!currentUser) {
-        set({ cards: [], isLoading: false });
+        console.log('⚠️ No authenticated user, loading from local storage only');
+        // Load from local storage if no authenticated user
+        try {
+          // For unauthenticated users, we'll use an empty array
+          // since we need a userId for getUserScannedCards
+          set({ 
+            cards: [], 
+            isLoading: false 
+          });
+        } catch (localError) {
+          console.error('❌ Local storage error:', localError);
+          set({ cards: [], isLoading: false });
+        }
         return;
       }
 
-      // Load from Firestore
+      // Try to load from Firestore first
       if (db) {
         try {
           const cardsQuery = query(
@@ -196,34 +219,76 @@ export const useCardStore = create<CardState>((set, get) => ({
             where('userId', '==', currentUser.uid),
             orderBy('createdAt', 'desc')
           );
-
-          const querySnapshot = await getDocs(cardsQuery);
-          const cards: BusinessCard[] = [];
           
-          querySnapshot.forEach(doc => {
+          const querySnapshot = await getDocs(cardsQuery);
+          const firestoreCards: BusinessCard[] = [];
+          
+          querySnapshot.forEach((doc) => {
             const data = doc.data();
-            cards.push({
+            firestoreCards.push({
               id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate?.() || Date.now(),
-              updatedAt: data.updatedAt?.toDate?.() || Date.now(),
-            } as BusinessCard);
+              name: data.name || 'Unknown Contact',
+              title: data.title,
+              company: data.company,
+              email: data.email,
+              phone: data.phone,
+              website: data.website,
+              address: data.address,
+              notes: data.notes,
+              imageUri: data.imageUri,
+              createdAt: data.createdAt?.toMillis() || Date.now(),
+              updatedAt: data.updatedAt?.toMillis() || Date.now(),
+              _fallbackId: data._fallbackId,
+              _isFallback: data._isFallback,
+              deviceId: data.deviceId,
+              deviceLabel: data.deviceLabel,
+            });
           });
-
-          set({ cards, isLoading: false, error: null });
-          console.log(`Loaded ${cards.length} cards from Firestore`);
+          
+          console.log('✅ Loaded', firestoreCards.length, 'cards from Firestore');
+          set({ cards: firestoreCards, isLoading: false });
+          return;
         } catch (firestoreError) {
-          console.error('Firestore error:', firestoreError);
-          set({ cards: [], isLoading: false, error: 'Failed to load cards' });
+          console.error('❌ Firestore error:', firestoreError);
+          // Fall back to local storage
         }
-      } else {
+      }
+      
+      // Fallback to local storage
+      try {
+        // Use current user's cards from local storage
+        const localScannedCards = await userDataStorage.getUserScannedCards(currentUser.uid);
+        // Convert ScannedCard to BusinessCard format
+        const localCards: BusinessCard[] = localScannedCards.map(card => ({
+          id: card.id,
+          name: card.name,
+          title: card.title,
+          company: card.company,
+          email: card.email,
+          phone: card.phone,
+          website: card.website,
+          address: card.address,
+          notes: card.notes,
+          imageUri: card.imageUrl,
+          createdAt: card.scannedAt,
+          updatedAt: card.updatedAt,
+          deviceId: 'local',
+          deviceLabel: 'Local Storage',
+        }));
+        set({ 
+          cards: localCards || [], 
+          isLoading: false 
+        });
+        console.log('✅ Loaded', localCards?.length || 0, 'cards from local storage');
+      } catch (localError) {
+        console.error('❌ Local storage error:', localError);
         set({ cards: [], isLoading: false });
       }
-
-    } catch (error: any) {
-      console.error('Load cards error:', error);
+      
+    } catch (error) {
+      console.error('❌ Error loading cards:', error);
       set({ 
-        error: error.message || 'Failed to load cards', 
+        error: 'Failed to load cards', 
         isLoading: false 
       });
     }

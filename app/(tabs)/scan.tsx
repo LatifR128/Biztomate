@@ -97,14 +97,21 @@ export default function ScanScreen() {
       
       if (Platform.OS !== 'web' && cameraRef.current) {
         // Capture photo from camera on mobile
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: false,
-        });
-        
-        if (photo && photo.uri) {
-          setCapturedImage(photo.uri);
-          await processImage(photo.uri);
+        try {
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.8,
+            base64: false,
+          });
+          
+          if (photo && photo.uri) {
+            setCapturedImage(photo.uri);
+            await processImage(photo.uri);
+          } else {
+            throw new Error('No photo captured');
+          }
+        } catch (cameraError) {
+          console.error('Camera capture error:', cameraError);
+          Alert.alert('Camera Error', 'Failed to capture photo. Please try again.');
         }
       } else {
         // For web or fallback, use a demo image
@@ -159,31 +166,49 @@ export default function ScanScreen() {
     try {
       setIsProcessing(true);
       
+      // Validate image URI
+      if (!imageUri || typeof imageUri !== 'string') {
+        throw new Error('Invalid image URI');
+      }
+      
       // Step 1: Process the image with AI OCR (most important step)
       setProcessingStep('Analyzing business card...');
       const cardData = await processBusinessCard(imageUri);
       
+      // Validate card data
+      if (!cardData || typeof cardData !== 'object') {
+        throw new Error('Failed to process business card data');
+      }
+      
       // Step 2: Create a new card with device information
       setProcessingStep('Creating contact record...');
       
-      // Get device information for tracking
-      const deviceId = Constants.expoConfig?.extra?.installationId || Constants.installationId || 'unknown';
-      const deviceLabel = Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android Phone' : 'Web';
+      // Get device information for tracking with fallbacks
+      let deviceId = 'unknown';
+      let deviceLabel = 'Unknown Device';
+      
+      try {
+        deviceId = Constants.expoConfig?.extra?.installationId || Constants.installationId || 'unknown';
+        deviceLabel = Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android Phone' : 'Web';
+      } catch (deviceError) {
+        console.error('Device info error:', deviceError);
+        // Use fallback values
+      }
       
       const newCard: BusinessCard = {
         id: Date.now().toString(),
         name: cardData.name || 'Unknown Contact',
-        title: cardData.title,
-        company: cardData.company,
-        email: cardData.email,
-        phone: cardData.phone,
-        website: cardData.website,
-        address: cardData.address,
+        title: cardData.title || undefined,
+        company: cardData.company || undefined,
+        email: cardData.email || undefined,
+        phone: cardData.phone || undefined,
+        website: cardData.website || undefined,
+        address: cardData.address || undefined,
         imageUri: imageUri,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        _fallbackId: cardData._fallbackId,
-        _isFallback: cardData._isFallback,
+        _fallbackId: cardData._fallbackId || undefined,
+        _isFallback: cardData._isFallback || false,
         deviceId: deviceId,
         deviceLabel: deviceLabel,
       };
@@ -191,30 +216,43 @@ export default function ScanScreen() {
       // Step 3: Quick duplicate check (only for non-fallback cards)
       if (!newCard._fallbackId && !newCard._isFallback) {
         setProcessingStep('Checking for duplicates...');
-        const duplicate = checkDuplicate(newCard);
-        
-        if (duplicate) {
-          // Show enhanced duplicate alert
-          showDuplicateAlert(duplicate, newCard);
-          return;
+        try {
+          const duplicate = checkDuplicate(newCard);
+          
+          if (duplicate) {
+            // Show enhanced duplicate alert
+            showDuplicateAlert(duplicate, newCard);
+            return;
+          }
+        } catch (duplicateError) {
+          console.error('Duplicate check error:', duplicateError);
+          // Continue without duplicate check
         }
       }
       
       // Step 4: Add the card to the store
       setProcessingStep('Saving contact...');
-      const added = await addCard(newCard);
-      
-      if (added) {
-        incrementScannedCards();
-        // Navigate to the card details screen
-        router.push(`/card/${newCard.id}`);
-      } else {
-        // This shouldn't happen since we already checked, but just in case
-        Alert.alert('Duplicate Detected', 'This contact already exists in your collection.');
+      try {
+        const added = await addCard(newCard);
+        
+        if (added) {
+          setProcessingStep('Contact saved successfully!');
+          incrementScannedCards();
+          router.push(`/card/${newCard.id}`);
+        } else {
+          throw new Error('Failed to save card');
+        }
+      } catch (saveError) {
+        console.error('Save card error:', saveError);
+        Alert.alert('Save Error', 'Failed to save contact. Please try again.');
       }
+      
     } catch (error) {
-      console.error('Error processing image:', error);
-      Alert.alert('Error', 'Failed to process the business card. Please try again.');
+      console.error('❌ Error processing image:', error);
+      Alert.alert(
+        'Processing Error', 
+        'Failed to process business card. Please try again with a clearer image.'
+      );
     } finally {
       setIsProcessing(false);
       setProcessingStep('');

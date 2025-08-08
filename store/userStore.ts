@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 
 interface User {
@@ -63,6 +63,7 @@ export const useUserStore = create<UserState>()(
           const currentUser = auth?.currentUser;
           if (!currentUser || !db) {
             // Fall back to default user if not authenticated
+            console.log('⚠️ No Firebase auth/db, using default user');
             set({
               user: createDefaultUser(),
               isLoading: false
@@ -71,38 +72,70 @@ export const useUserStore = create<UserState>()(
           }
           
           // Try to get user data from Firestore
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            set({
-              user: {
-                id: currentUser.uid,
-                email: userData.email,
-                name: userData.name,
-                subscriptionPlan: userData.subscriptionPlan || 'free',
-                subscriptionEndDate: userData.subscriptionEndDate,
-                trialEndDate: userData.trialEndDate,
-                scannedCards: userData.scannedCards || 0,
-                maxCards: userData.maxCards || 5,
-                createdAt: userData.createdAt || Date.now(),
-                updatedAt: userData.updatedAt || Date.now(),
-              },
-              isLoading: false
-            });
-          } else {
-            // Create default user if not found in Firestore
+          try {
+            const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+            
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              set({
+                user: {
+                  id: currentUser.uid,
+                  email: userData.email || currentUser.email || 'user@biztomate.com',
+                  name: userData.name || currentUser.displayName || 'User',
+                  subscriptionPlan: userData.subscriptionPlan || 'free',
+                  subscriptionEndDate: userData.subscriptionEndDate,
+                  trialEndDate: userData.trialEndDate || Date.now() + (7 * 24 * 60 * 60 * 1000),
+                  scannedCards: userData.scannedCards || 0,
+                  maxCards: userData.maxCards || 5,
+                  createdAt: userData.createdAt || Date.now(),
+                  updatedAt: userData.updatedAt || Date.now(),
+                },
+                isLoading: false
+              });
+            } else {
+              // Create default user document
+              console.log('📝 Creating new user document in Firestore');
+              const defaultUser = createDefaultUser();
+              defaultUser.id = currentUser.uid;
+              defaultUser.email = currentUser.email || 'user@biztomate.com';
+              defaultUser.name = currentUser.displayName || 'User';
+              
+              try {
+                await setDoc(doc(db, 'users', currentUser.uid), {
+                  email: defaultUser.email,
+                  name: defaultUser.name,
+                  subscriptionPlan: defaultUser.subscriptionPlan,
+                  trialEndDate: defaultUser.trialEndDate,
+                  scannedCards: defaultUser.scannedCards,
+                  maxCards: defaultUser.maxCards,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+                console.log('✅ User document created in Firestore');
+              } catch (firestoreError) {
+                console.error('❌ Firestore create error:', firestoreError);
+                // Continue with default user even if Firestore fails
+              }
+              
+              set({
+                user: defaultUser,
+                isLoading: false
+              });
+            }
+          } catch (firestoreError) {
+            console.error('❌ Firestore error:', firestoreError);
+            // Fall back to default user
             set({
               user: createDefaultUser(),
               isLoading: false
             });
           }
-        } catch (error: any) {
-          console.error('Error initializing user:', error);
+        } catch (error) {
+          console.error('❌ User initialization error:', error);
           set({
             user: createDefaultUser(),
             isLoading: false,
-            error: error.message
+            error: 'Failed to initialize user'
           });
         }
       },

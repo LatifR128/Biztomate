@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
-      "buildNumber": "166",
+      "buildNumber": "167",
       "googleServicesFile": "GoogleService-Info-2.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
