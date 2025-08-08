@@ -1,29 +1,32 @@
 import { BusinessCard } from '@/types';
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 
 // Convert image URI to base64 with better error handling and optimization
 const imageToBase64 = async (uri: string): Promise<string> => {
   try {
-    // Handle different URI formats
-    let imageUri = uri;
-    if (Platform.OS === 'ios' && uri.startsWith('file://')) {
-      imageUri = uri;
-    } else if (Platform.OS === 'android' && uri.startsWith('content://')) {
-      imageUri = uri;
+    // On native, use FileSystem for reliable base64 conversion
+    if (Platform.OS !== 'web') {
+      // Ensure we have a file URI; ImagePicker returns file:// on native
+      const base64Native = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64Native) {
+        throw new Error('Failed to encode image to base64 (native)');
+      }
+      return base64Native;
     }
 
-    const response = await fetch(imageUri);
+    // On web, use fetch + FileReader
+    const response = await fetch(uri);
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.status}`);
     }
-    
     const blob = await response.blob();
-    
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = reader.result as string;
-        // Remove the data:image/...;base64, prefix
         const base64Data = base64.split(',')[1];
         if (!base64Data) {
           reject(new Error('Invalid base64 data'));
