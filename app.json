@@ -2,69 +2,69 @@
   "expo": {
     "name": "Biztomate",
     "slug": "biztomate-scanner",
-    "version": "1.4.0",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "com.biztomate.scanner",
+    "scheme": "biztomatescanner",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
-      "buildNumber": "128",
+      "buildNumber": "162",
       "googleServicesFile": "GoogleService-Info.plist",
       "infoPlist": {
-        "NSCameraUsageDescription": "Biztomate needs camera access to scan business cards and extract contact information.",
-        "NSPhotoLibraryUsageDescription": "Biztomate needs photo library access to select business card images for processing.",
-        "NSMicrophoneUsageDescription": "Biztomate may need microphone access for enhanced scanning features.",
         "ITSAppUsesNonExemptEncryption": false,
-        "UIRequiresFullScreen": false,
-        "UIStatusBarStyle": "default",
-        "UIViewControllerBasedStatusBarAppearance": true,
-        "UIStatusBarHidden": false,
-        "UISupportedInterfaceOrientations": ["UIInterfaceOrientationPortrait"],
-                "UISupportedInterfaceOrientations~ipad": ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "biztomatescanner",
+            "CFBundleURLSchemes": ["biztomatescanner"]
+          },
+          {
+            "CFBundleURLName": "google",
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc"
+            ]
+          }
+        ]
       }
     },
     "android": {
-      "package": "com.biztomate.scanner",
-      "versionCode": 24,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "INTERNET"
-      ]
+      "package": "com.biztomate.scanner",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
-      "favicon": "./assets/images/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-camera",
-      "expo-image-picker",
       [
-        "@react-native-google-signin/google-signin",
+        "expo-camera",
         {
-          "webClientId": "589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com",
-          "iosUrlScheme": "com.googleusercontent.apps.589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc"
+          "cameraPermission": "Allow Biztomate Scanner to access your camera to scan business cards."
         }
       ],
       [
-        "@react-native-firebase/app",
+        "expo-image-picker",
         {
-          "iosGoogleServicesFile": "GoogleService-Info.plist"
+          "photosPermission": "The app accesses your photos to let you select business card images to scan."
         }
       ],
+      "@react-native-google-signin/google-signin",
+
       [
         "expo-build-properties",
         {
@@ -78,10 +78,13 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "eb90d0c8-fdbf-4a14-a35c-88e2a13c4ea2"
       }
-    }
+    },
+    "owner": "latifr"
   }
 }
