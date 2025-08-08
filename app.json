@@ -18,8 +18,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
-      "buildNumber": "163",
-      "googleServicesFile": "GoogleService-Info.plist",
+      "buildNumber": "164",
+      "googleServicesFile": "GoogleService-Info-2.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -28,10 +28,8 @@
             "CFBundleURLSchemes": ["biztomatescanner"]
           },
           {
-            "CFBundleURLName": "google",
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc"
-            ]
+            "CFBundleURLName": "GoogleSignIn",
+            "CFBundleURLSchemes": ["com.googleusercontent.apps.589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc"]
           }
         ]
       }
@@ -63,7 +61,17 @@
           "photosPermission": "The app accesses your photos to let you select business card images to scan."
         }
       ],
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-firebase/app"
+      ],
+      [
+        "@react-native-firebase/auth",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
 
       [
         "expo-build-properties",

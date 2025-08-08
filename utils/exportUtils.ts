@@ -17,12 +17,14 @@ export const cardsToCSV = (cards: BusinessCard[]): string => {
     'Website',
     'Address',
     'Notes',
-    'Date Added'
+    'Date Added',
+    'Device'
   ].join(',');
   
   // Convert each card to a CSV row with proper field mapping
   const rows = cards.map(card => {
     const date = new Date(card.createdAt).toLocaleDateString();
+    const deviceInfo = card.deviceLabel || card.deviceId || 'Unknown Device';
     return [
       escapeCsvValue(card.name || ''),           // Name field
       escapeCsvValue(card.title || ''),          // Title field  
@@ -32,7 +34,8 @@ export const cardsToCSV = (cards: BusinessCard[]): string => {
       escapeCsvValue(card.website || ''),        // Website field
       escapeCsvValue(card.address || ''),        // Address field
       escapeCsvValue(card.notes || ''),          // Notes field
-      escapeCsvValue(date)                       // Date Added field
+      escapeCsvValue(date),                      // Date Added field
+      escapeCsvValue(deviceInfo)                 // Device field
     ].join(',');
   });
   

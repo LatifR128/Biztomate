@@ -4,9 +4,9 @@
 export const OAUTH_CONFIG = {
   // Google OAuth Configuration
   GOOGLE: {
-    CLIENT_ID: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // Updated to match app.json
+    CLIENT_ID: 'YOUR_GOOGLE_CLIENT_ID', // Replace with your Google OAuth client ID
     CLIENT_SECRET: 'YOUR_GOOGLE_CLIENT_SECRET', // Replace with your Google OAuth client secret
-    REDIRECT_URI: 'biztomatescanner://oauth/google',
+    REDIRECT_URI: 'com.biztomate.scanner://oauth/google',
     SCOPES: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive.file'
@@ -19,7 +19,7 @@ export const OAUTH_CONFIG = {
   MICROSOFT: {
     CLIENT_ID: 'YOUR_MICROSOFT_CLIENT_ID', // Replace with your Microsoft OAuth client ID
     CLIENT_SECRET: 'YOUR_MICROSOFT_CLIENT_SECRET', // Replace with your Microsoft OAuth client secret
-    REDIRECT_URI: 'biztomatescanner://oauth/microsoft',
+    REDIRECT_URI: 'com.biztomate.scanner://oauth/microsoft',
     SCOPES: [
       'Files.ReadWrite',
       'Sites.ReadWrite.All'
@@ -52,7 +52,9 @@ export const API_ENDPOINTS = {
 export const isOAuthConfigured = (): boolean => {
   return (
     OAUTH_CONFIG.GOOGLE.CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID' &&
-    OAUTH_CONFIG.MICROSOFT.CLIENT_ID !== 'YOUR_MICROSOFT_CLIENT_ID'
+    OAUTH_CONFIG.GOOGLE.CLIENT_SECRET !== 'YOUR_GOOGLE_CLIENT_SECRET' &&
+    OAUTH_CONFIG.MICROSOFT.CLIENT_ID !== 'YOUR_MICROSOFT_CLIENT_ID' &&
+    OAUTH_CONFIG.MICROSOFT.CLIENT_SECRET !== 'YOUR_MICROSOFT_CLIENT_SECRET'
   );
 };
 

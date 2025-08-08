@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Keyboard, Platform } from 'react-native';
 import Colors from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,15 +20,37 @@ export default function CardDetailField({
 }: CardDetailFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
+  const inputRef = useRef<TextInput>(null);
+  
+  // Update edit value when prop value changes
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
   
   const handleSave = () => {
     onUpdate(editValue);
     setIsEditing(false);
+    Keyboard.dismiss();
   };
   
   const handleCancel = () => {
     setEditValue(value);
     setIsEditing(false);
+    Keyboard.dismiss();
+  };
+  
+  const handleStartEdit = () => {
+    setIsEditing(true);
+    // Small delay to ensure the input is rendered before focusing
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+  
+  const handleKeyPress = (e: any) => {
+    if (e.nativeEvent.key === 'Enter' && !multiline) {
+      handleSave();
+    }
   };
   
   return (
@@ -38,6 +60,7 @@ export default function CardDetailField({
       {isEditing ? (
         <View style={styles.editContainer}>
           <TextInput
+            ref={inputRef}
             style={[
               styles.input,
               multiline && styles.multilineInput
@@ -46,13 +69,21 @@ export default function CardDetailField({
             onChangeText={setEditValue}
             placeholder={placeholder}
             multiline={multiline}
-            autoFocus
+            autoFocus={false}
+            returnKeyType={multiline ? 'default' : 'done'}
+            onSubmitEditing={multiline ? undefined : handleSave}
+            onKeyPress={handleKeyPress}
+            blurOnSubmit={!multiline}
+            enablesReturnKeyAutomatically={true}
+            textAlignVertical={multiline ? 'top' : 'center'}
+            maxLength={multiline ? 500 : 100}
           />
           
           <View style={styles.actionButtons}>
             <TouchableOpacity 
               style={[styles.actionButton, styles.saveButton]} 
               onPress={handleSave}
+              activeOpacity={0.7}
             >
               <Ionicons name="checkmark" size={16} color="white" />
             </TouchableOpacity>
@@ -60,6 +91,7 @@ export default function CardDetailField({
             <TouchableOpacity 
               style={[styles.actionButton, styles.cancelButton]} 
               onPress={handleCancel}
+              activeOpacity={0.7}
             >
               <Ionicons name="close" size={16} color="white" />
             </TouchableOpacity>
@@ -80,7 +112,8 @@ export default function CardDetailField({
           
           <TouchableOpacity 
             style={styles.editButton}
-            onPress={() => setIsEditing(true)}
+            onPress={handleStartEdit}
+            activeOpacity={0.7}
           >
             <Ionicons name="create" size={16} color={Colors.light.primary} />
           </TouchableOpacity>
@@ -130,10 +163,13 @@ const styles = StyleSheet.create({
     padding: 10,
     color: Colors.light.text,
     backgroundColor: 'white',
+    minHeight: 44,
   },
   multilineInput: {
     minHeight: 80,
     textAlignVertical: 'top',
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   actionButtons: {
     flexDirection: 'row',

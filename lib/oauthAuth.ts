@@ -14,8 +14,7 @@ import { userDataStorage, UserData } from '@/utils/userDataStorage';
 
 // Configure Google Sign-In
 GoogleSignin.configure({
-  webClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // Your Google Web Client ID
-  iosClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // Your iOS Client ID
+  iosClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // iOS client ID only
   offlineAccess: true,
 });
 

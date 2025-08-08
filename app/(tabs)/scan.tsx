@@ -8,7 +8,7 @@ import {
   Alert,
   Platform,
   Image,
-  Dimensions // Add this
+  Dimensions
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,6 +22,7 @@ import { useCardStore } from '@/store/cardStore';
 import { useUserStore } from '@/store/userStore';
 import { processBusinessCard } from '@/utils/ocrUtils';
 import { BusinessCard } from '@/types';
+import Constants from 'expo-constants';
 
 const { width, height } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -34,8 +35,9 @@ export default function ScanScreen() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [processingStep, setProcessingStep] = useState<string>('');
   
-  const { addCard, checkDuplicate, syncCards, cleanupFallbackCards } = useCardStore();
+  const { addCard, checkDuplicate } = useCardStore();
   const { canScanMore, incrementScannedCards, isTrialActive } = useUserStore();
   
   const cameraRef = useRef<any>(null);
@@ -46,8 +48,8 @@ export default function ScanScreen() {
   
   const showDuplicateAlert = (existingCard: BusinessCard, newCard: BusinessCard) => {
     Alert.alert(
-      "Data Already Captured",
-      `This contact appears to already exist in your collection:\n\nExisting: ${existingCard.name}${existingCard.company ? ` - ${existingCard.company}` : ''}\nNew: ${newCard.name}${newCard.company ? ` - ${newCard.company}` : ''}\n\nWould you like to add it anyway or view the existing card?`,
+      "Duplicate Contact Detected",
+      `This contact appears to already exist in your collection:\n\n📋 Existing: ${existingCard.name}${existingCard.company ? `\n🏢 Company: ${existingCard.company}` : ''}${existingCard.email ? `\n📧 Email: ${existingCard.email}` : ''}${existingCard.phone ? `\n📞 Phone: ${existingCard.phone}` : ''}\n\n📋 New: ${newCard.name}${newCard.company ? `\n🏢 Company: ${newCard.company}` : ''}${newCard.email ? `\n📧 Email: ${newCard.email}` : ''}${newCard.phone ? `\n📞 Phone: ${newCard.phone}` : ''}\n\nWould you like to view the existing card or add this as a new contact?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -55,14 +57,15 @@ export default function ScanScreen() {
           onPress: () => router.push(`/card/${existingCard.id}`)
         },
         { 
-          text: "Add Anyway", 
+          text: "Add as New", 
           onPress: () => {
-            // Force add the card
+            // Force add the card with enhanced duplicate handling
             const cardWithNewId: BusinessCard = {
               ...newCard,
-              id: Date.now().toString() + '_duplicate',
+              id: Date.now().toString() + '_manual_add',
               createdAt: Date.now(),
               updatedAt: Date.now(),
+              _manualOverride: true, // Mark as manually added
             };
             
             // Bypass duplicate check by directly updating the store
@@ -156,14 +159,17 @@ export default function ScanScreen() {
     try {
       setIsProcessing(true);
       
-      // Sync with Firestore first to ensure we have latest data
-      await syncCards();
-      await cleanupFallbackCards(); // Clean up fallback cards before processing
-      
-      // Process the image with AI OCR
+      // Step 1: Process the image with AI OCR (most important step)
+      setProcessingStep('Analyzing business card...');
       const cardData = await processBusinessCard(imageUri);
       
-      // Create a new card
+      // Step 2: Create a new card with device information
+      setProcessingStep('Creating contact record...');
+      
+      // Get device information for tracking
+      const deviceId = Constants.expoConfig?.extra?.installationId || Constants.installationId || 'unknown';
+      const deviceLabel = Platform.OS === 'ios' ? 'iPhone' : Platform.OS === 'android' ? 'Android Phone' : 'Web';
+      
       const newCard: BusinessCard = {
         id: Date.now().toString(),
         name: cardData.name || 'Unknown Contact',
@@ -176,19 +182,26 @@ export default function ScanScreen() {
         imageUri: imageUri,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        _fallbackId: cardData._fallbackId, // Preserve fallback ID if present
+        _fallbackId: cardData._fallbackId,
+        _isFallback: cardData._isFallback,
+        deviceId: deviceId,
+        deviceLabel: deviceLabel,
       };
       
-      // Check for duplicates
-      const duplicate = checkDuplicate(newCard);
-      
-      if (duplicate) {
-        // Show duplicate alert
-        showDuplicateAlert(duplicate, newCard);
-        return;
+      // Step 3: Quick duplicate check (only for non-fallback cards)
+      if (!newCard._fallbackId && !newCard._isFallback) {
+        setProcessingStep('Checking for duplicates...');
+        const duplicate = checkDuplicate(newCard);
+        
+        if (duplicate) {
+          // Show enhanced duplicate alert
+          showDuplicateAlert(duplicate, newCard);
+          return;
+        }
       }
       
-      // Add the card to the store (this will also check for duplicates)
+      // Step 4: Add the card to the store
+      setProcessingStep('Saving contact...');
       const added = await addCard(newCard);
       
       if (added) {
@@ -204,6 +217,7 @@ export default function ScanScreen() {
       Alert.alert('Error', 'Failed to process the business card. Please try again.');
     } finally {
       setIsProcessing(false);
+      setProcessingStep('');
     }
   };
   
@@ -257,8 +271,13 @@ export default function ScanScreen() {
         <View style={styles.processingContainer}>
           <ActivityIndicator size="large" color={Colors.light.primary} />
           <Text style={styles.processingText}>Processing business card...</Text>
-          <Text style={styles.processingSubtext}>Extracting contact information with AI...</Text>
-          <Text style={styles.processingNote}>Checking for duplicates...</Text>
+          <Text style={styles.processingSubtext}>{processingStep}</Text>
+          <View style={styles.processingSteps}>
+            <Text style={styles.processingStep}>✓ Analyzing card</Text>
+            <Text style={styles.processingStep}>✓ Creating record</Text>
+            <Text style={styles.processingStep}>✓ Checking duplicates</Text>
+            <Text style={styles.processingStep}>✓ Saving contact</Text>
+          </View>
         </View>
       ) : (
         <>
@@ -338,9 +357,9 @@ export default function ScanScreen() {
               4. Review and edit the extracted information
             </Text>
             <View style={styles.duplicateInfo}>
-              <Ionicons name="warning" size={16} color={Colors.light.warning} />
+              <Ionicons name="shield-checkmark" size={16} color={Colors.light.success} />
               <Text style={styles.duplicateText}>
-                Duplicate detection is active - we'll alert you if this contact already exists
+                Enhanced duplicate detection active - we'll alert you if this contact already exists
               </Text>
             </View>
           </View>
@@ -443,15 +462,18 @@ const styles = StyleSheet.create({
   processingSubtext: {
     marginTop: 8,
     fontSize: 14,
-    color: Colors.light.textSecondary,
-    textAlign: 'center',
-  },
-  processingNote: {
-    marginTop: 12,
-    fontSize: 12,
     color: Colors.light.primary,
     textAlign: 'center',
-    fontStyle: 'italic',
+    fontWeight: '500',
+  },
+  processingSteps: {
+    marginTop: 20,
+    alignItems: 'flex-start',
+  },
+  processingStep: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
   },
   previewContainer: {
     position: 'absolute',

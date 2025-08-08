@@ -1,78 +1,87 @@
-import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme, Platform } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import ErrorBoundary from '@/components/ErrorBoundary';
-import { useUserStore } from '@/store/userStore';
 import { useAuthStore } from '@/store/authStore';
 import { useCardStore } from '@/store/cardStore';
+import { useUserStore } from '@/store/userStore';
 import { userDataStorage } from '@/utils/userDataStorage';
-import { auth, db, storage, analytics } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+
+// Auth guard component
+function AuthGuard() {
+  const { isAuthenticated, isLoading } = useAuthStore();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return; // Don't redirect while loading
+
+    const inAuthGroup = segments[0] === 'auth';
+    const inTabsGroup = segments[0] === '(tabs)';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      // Redirect to auth if not authenticated and not already in auth group
+      router.replace('/auth');
+    } else if (isAuthenticated && inAuthGroup) {
+      // Redirect to home if authenticated and in auth group
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, isLoading, segments]);
+
+  return null;
+}
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const { initializeAuth, user, isAuthenticated, isLoading } = useAuthStore();
+  const { loadCards } = useCardStore();
   const { initializeUser } = useUserStore();
-  const { initializeAuth, isAuthenticated, isLoading } = useAuthStore();
-  const { subscribeToCards } = useCardStore();
-  
-  useEffect(() => {
-    // Initialize user data storage and user data on app start
-    const initDataStorage = async () => {
-      await userDataStorage.initialize();
-      initializeUser();
-    };
-    
-    initDataStorage();
-  }, [initializeUser]);
 
   useEffect(() => {
     const initApp = async () => {
-      const unsubscribeAuth = await initializeAuth();
-      
-      // Set up real-time card sync when authenticated
-      if (isAuthenticated) {
-        const unsubscribeCards = subscribeToCards();
+      try {
+        // Initialize user data storage
+        await userDataStorage.initialize();
         
-        return () => {
-          unsubscribeAuth?.();
-          unsubscribeCards?.();
-        };
+        // Initialize authentication
+        const unsubscribe = await initializeAuth();
+        
+        // Initialize user store
+        await initializeUser();
+        
+        // Load cards if user is authenticated
+        if (isAuthenticated && user) {
+          await loadCards();
+        }
+        
+        return unsubscribe;
+      } catch (error) {
+        console.error('App initialization error:', error);
       }
-      
-      return unsubscribeAuth;
     };
-    
+
     initApp();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   return (
-    <SafeAreaProvider>
-      <StatusBar 
-        style={colorScheme === 'dark' ? 'light' : 'dark'}
-      />
-      <ErrorBoundary>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: {
-              backgroundColor: '#FFFFFF',
-            },
-          }}
-        >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="auth" options={{ headerShown: false }} />
-          <Stack.Screen name="subscription" options={{ headerShown: false }} />
-          <Stack.Screen name="payment" options={{ headerShown: false }} />
-          <Stack.Screen name="welcome" options={{ headerShown: false }} />
-          <Stack.Screen name="terms" options={{ headerShown: false }} />
-          <Stack.Screen name="privacy" options={{ headerShown: false }} />
-          <Stack.Screen name="export" options={{ headerShown: false }} />
-          <Stack.Screen name="card" options={{ headerShown: false }} />
-          <Stack.Screen name="profile" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <>
+      <StatusBar style="auto" />
+      <AuthGuard />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="card" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="subscription" options={{ headerShown: false }} />
+        <Stack.Screen name="export" options={{ headerShown: false }} />
+        <Stack.Screen name="payment" options={{ headerShown: false }} />
+        <Stack.Screen name="privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="terms" options={{ headerShown: false }} />
+        <Stack.Screen name="welcome" options={{ headerShown: false }} />
+      </Stack>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,13 +7,16 @@ import {
   TextInput,
   TouchableOpacity,
   RefreshControl,
-  Dimensions // Add this
+  Dimensions,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useCardStore } from '@/store/cardStore';
+import { useAuthStore } from '@/store/authStore';
 import { BusinessCard } from '@/types';
 import CardItem from '@/components/CardItem';
 import EmptyState from '@/components/EmptyState';
@@ -26,16 +29,45 @@ const isTablet = width >= 768;
 export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { cards, searchCards } = useCardStore();
+  const { cards, searchCards, loadCards, syncCards, deleteCard, isLoading, error } = useCardStore();
+  const { user } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   
   const filteredCards = searchQuery 
     ? searchCards(searchQuery) 
     : cards;
   
+  // Load cards when component mounts
+  useEffect(() => {
+    if (user) {
+      loadCards();
+    }
+  }, [user]);
+  
   const handleCardPress = (card: BusinessCard) => {
-    router.push(`/card/${card.id}`);
+    if (isSelectionMode) {
+      // Toggle selection
+      const newSelected = new Set(selectedCards);
+      if (newSelected.has(card.id)) {
+        newSelected.delete(card.id);
+      } else {
+        newSelected.add(card.id);
+      }
+      setSelectedCards(newSelected);
+    } else {
+      // Navigate to card detail
+      router.push(`/card/${card.id}`);
+    }
+  };
+  
+  const handleLongPress = (card: BusinessCard) => {
+    if (!isSelectionMode) {
+      setIsSelectionMode(true);
+      setSelectedCards(new Set([card.id]));
+    }
   };
   
   const handleScan = () => {
@@ -46,15 +78,80 @@ export default function HistoryScreen() {
     router.push('/export');
   };
   
-  const onRefresh = useCallback(() => {
+  const handleSelectAll = () => {
+    if (selectedCards.size === filteredCards.length) {
+      setSelectedCards(new Set());
+    } else {
+      setSelectedCards(new Set(filteredCards.map(card => card.id)));
+    }
+  };
+  
+  const handleDeleteSelected = () => {
+    if (selectedCards.size === 0) return;
+    
+    Alert.alert(
+      'Delete Cards',
+      `Are you sure you want to delete ${selectedCards.size} card${selectedCards.size > 1 ? 's' : ''}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              for (const cardId of selectedCards) {
+                await deleteCard(cardId);
+              }
+              setSelectedCards(new Set());
+              setIsSelectionMode(false);
+              Alert.alert('Success', 'Selected cards have been deleted.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete some cards. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+  
+  const handleCancelSelection = () => {
+    setIsSelectionMode(false);
+    setSelectedCards(new Set());
+  };
+  
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // In a real app, you might fetch updated data here
-    setTimeout(() => {
+    try {
+      await syncCards();
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
       setRefreshing(false);
-    }, 1000);
-  }, []);
+    }
+  }, [syncCards]);
   
   const renderEmptyState = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.light.primary} />
+          <Text style={styles.loadingText}>Loading your cards...</Text>
+        </View>
+      );
+    }
+    
+    if (error) {
+      return (
+        <EmptyState
+          title="Error Loading Cards"
+          message={error}
+          actionLabel="Try Again"
+          onAction={() => loadCards()}
+          icon={<Ionicons name="alert-circle" size={48} color={Colors.light.error} />}
+        />
+      );
+    }
+    
     if (searchQuery && filteredCards.length === 0) {
       return (
         <EmptyState
@@ -67,14 +164,78 @@ export default function HistoryScreen() {
     
     return (
       <EmptyState
-        title="No Cards Yet"
-        message="Start scanning business cards to build your collection."
-        actionLabel="Scan a Card"
+        title="You Haven't Used the App Yet."
+        message="Start scanning business cards to build your digital collection and never lose contact information again."
+        actionLabel="Scan Your First Card"
         onAction={handleScan}
-        icon={<Ionicons name="add" size={48} color={Colors.light.primary} />}
+        icon={<Ionicons name="scan" size={48} color={Colors.light.primary} />}
       />
     );
   };
+  
+  const renderHeader = () => {
+    if (isSelectionMode) {
+      return (
+        <View style={styles.selectionHeader}>
+          <TouchableOpacity onPress={handleCancelSelection}>
+            <Ionicons name="close" size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+          <Text style={styles.selectionTitle}>
+            {selectedCards.size} selected
+          </Text>
+          <TouchableOpacity onPress={handleSelectAll}>
+            <Text style={styles.selectAllText}>
+              {selectedCards.size === filteredCards.length ? 'Deselect All' : 'Select All'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Card History</Text>
+          {cards.length > 0 && (
+            <TouchableOpacity 
+              style={styles.menuButton}
+              onPress={() => setIsSelectionMode(true)}
+            >
+              <Ionicons name="ellipsis-vertical" size={24} color={Colors.light.text} />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {cards.length > 0 && (
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color={Colors.light.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search cards..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor={Colors.light.textSecondary}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Text style={styles.clearButton}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+  
+  const renderCardItem = ({ item }: { item: BusinessCard }) => (
+    <CardItem 
+      card={item} 
+      onPress={handleCardPress}
+      onLongPress={handleLongPress}
+      isSelected={selectedCards.has(item.id)}
+      showSelection={isSelectionMode}
+    />
+  );
   
   return (
     <View style={[
@@ -86,30 +247,12 @@ export default function HistoryScreen() {
     ]}>
       <TrialBanner />
       
-      {cards.length > 0 && (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={Colors.light.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search cards..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={Colors.light.textSecondary}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.clearButton}>Clear</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      {renderHeader()}
       
       <FlatList
         data={filteredCards}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <CardItem card={item} onPress={handleCardPress} />
-        )}
+        renderItem={renderCardItem}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmptyState}
         refreshControl={
@@ -122,7 +265,23 @@ export default function HistoryScreen() {
         }
       />
       
-      {cards.length > 0 && (
+      {/* Selection Mode Actions */}
+      {isSelectionMode && selectedCards.size > 0 && (
+        <View style={styles.selectionActions}>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleDeleteSelected}
+          >
+            <Ionicons name="trash" size={20} color="white" />
+            <Text style={styles.deleteButtonText}>
+              Delete ({selectedCards.size})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      {/* Normal Actions */}
+      {cards.length > 0 && !isSelectionMode && (
         <View style={styles.actionContainer}>
           <Button
             title="Export Cards"
@@ -145,21 +304,49 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+  },
+  menuButton: {
+    padding: 8,
+  },
+  selectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.primary,
+  },
+  selectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  selectAllText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.light.card,
-    margin: 16,
-    marginBottom: 8,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  searchContainerTablet: {
-    margin: 32,
-    marginBottom: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   searchInput: {
     flex: 1,
@@ -176,6 +363,41 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 8,
     flexGrow: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.background,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.error,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   actionContainer: {
     paddingHorizontal: 16,

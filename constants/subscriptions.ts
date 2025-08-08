@@ -1,5 +1,33 @@
 import { SubscriptionPlan } from '@/types';
 
+// IAP Configuration
+export const IAP_CONFIG = {
+  // Apple App Store
+  APPLE_SHARED_SECRET: '1545f3c5d2c6493da6b799f9602aab94',
+  APPLE_PRODUCTION_URL: 'https://buy.itunes.apple.com/verifyReceipt',
+  APPLE_SANDBOX_URL: 'https://sandbox.itunes.apple.com/verifyReceipt',
+  
+  // App Store Connect API
+  APP_STORE_CONNECT_API_KEY_ID: 'ASCR2B57BH',
+  APP_STORE_CONNECT_ISSUER_ID: '970814e0-d3eb-4319-9b3f-83982733ca3c',
+  
+  // In-App Purchase ID
+  IN_APP_PURCHASE_ID: '772Z7DYA7W',
+  
+  // Subscription Group Bundle ID - CRITICAL for IAP connection
+  SUBSCRIPTION_GROUP_BUNDLE_ID: '21734048',
+  
+  // Backend validation
+  BACKEND_VALIDATION_URL: 'https://toolkit.rork.com/receipt-validation/validateReceipt',
+  
+  // Android (if needed)
+  ANDROID_ACCESS_TOKEN: 'your-access-token', // Replace when implementing Android
+  
+  // Bundle identifiers
+  IOS_BUNDLE_ID: 'com.biztomate.scanner',
+  ANDROID_PACKAGE_NAME: 'com.biztomate.scanner',
+};
+
 // Real product IDs from App Store Connect - these should match your actual configured products
 export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {

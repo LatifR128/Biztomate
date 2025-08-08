@@ -152,9 +152,9 @@ export default function PaymentScreen() {
         });
         
         // Validate receipt on server
-        const validationResult = await validateReceipt(result.receiptData);
+        const validationResult = await validateReceipt(result.receiptData, planId);
         
-        if (validationResult.success && validationResult.subscription?.isValid) {
+        if (validationResult.success && validationResult.subscription?.isActive) {
           // Update subscription
           updateSubscription(planId as any);
           

@@ -7,26 +7,62 @@ import { Ionicons } from '@expo/vector-icons';
 interface CardItemProps {
   card: BusinessCard;
   onPress: (card: BusinessCard) => void;
+  onLongPress?: (card: BusinessCard) => void;
+  isSelected?: boolean;
+  showSelection?: boolean;
 }
 
-export default function CardItem({ card, onPress }: CardItemProps) {
+export default function CardItem({ 
+  card, 
+  onPress, 
+  onLongPress, 
+  isSelected = false, 
+  showSelection = false 
+}: CardItemProps) {
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString();
   };
 
+  const handlePress = () => {
+    onPress(card);
+  };
+
+  const handleLongPress = () => {
+    if (onLongPress) {
+      onLongPress(card);
+    }
+  };
+
   return (
     <TouchableOpacity 
-      style={styles.container}
-      onPress={() => onPress(card)}
+      style={[
+        styles.container,
+        isSelected && styles.selectedContainer,
+        showSelection && styles.selectionModeContainer
+      ]}
+      onPress={handlePress}
+      onLongPress={handleLongPress}
       activeOpacity={0.7}
+      delayLongPress={500}
     >
+      {/* Selection Indicator */}
+      {showSelection && (
+        <View style={[styles.selectionIndicator, isSelected && styles.selectedIndicator]}>
+          {isSelected && (
+            <Ionicons name="checkmark" size={16} color="white" />
+          )}
+        </View>
+      )}
+      
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.nameContainer}>
             <Text style={styles.name}>{card.name}</Text>
             {card.title && <Text style={styles.title}>{card.title}</Text>}
           </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
+          {!showSelection && (
+            <Ionicons name="chevron-forward" size={20} color={Colors.light.textSecondary} />
+          )}
         </View>
         
         {card.company && (
@@ -88,6 +124,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  selectedContainer: {
+    backgroundColor: Colors.light.primary + '20',
+    borderColor: Colors.light.primary,
+    borderWidth: 2,
+  },
+  selectionModeContainer: {
+    paddingLeft: 8,
+  },
+  selectionIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    alignSelf: 'center',
+  },
+  selectedIndicator: {
+    backgroundColor: Colors.light.primary,
+    borderColor: Colors.light.primary,
   },
   content: {
     flex: 1,

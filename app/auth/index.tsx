@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '@/constants/colors';
+import RobotHeadIcon from '@/components/icons/RobotHeadIcon';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,28 +53,27 @@ export default function AuthLandingScreen() {
     router.push('/auth/signin' as any);
   };
 
+  const handleTermsPress = () => {
+    router.push('/terms' as any);
+  };
 
+  const handlePrivacyPress = () => {
+    router.push('/privacy' as any);
+  };
 
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="dark-content" backgroundColor="white" translucent />
       
-      <LinearGradient
-        colors={[Colors.light.primary, Colors.light.secondary]}
-        style={styles.background}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           {/* Logo and App Name */}
           <View style={styles.logoContainer}>
             <Animated.View style={[styles.logoBackground, { transform: [{ scale: scaleAnim }] }]}>
-              <Ionicons name="flash" size={40} color="white" />
+              <RobotHeadIcon size={48} color={Colors.light.primary} />
             </Animated.View>
             <Text style={styles.appName}>Biztomate</Text>
             <Text style={styles.tagline}>Scan • Organize • Connect</Text>
@@ -127,14 +126,7 @@ export default function AuthLandingScreen() {
               style={styles.primaryButton}
               onPress={handleSignUp}
             >
-              <LinearGradient
-                colors={[Colors.light.secondary, Colors.light.primary]}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.primaryButtonText}>Get Started</Text>
-              </LinearGradient>
+              <Text style={styles.primaryButtonText}>Get Started</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -143,16 +135,14 @@ export default function AuthLandingScreen() {
             >
               <Text style={styles.secondaryButtonText}>I already have an account</Text>
             </TouchableOpacity>
-
-
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>
               By continuing, you agree to our{' '}
-              <Text style={styles.linkText}>Terms of Service</Text> and{' '}
-              <Text style={styles.linkText}>Privacy Policy</Text>
+              <Text style={styles.linkText} onPress={handleTermsPress}>Terms of Service</Text> and{' '}
+              <Text style={styles.linkText} onPress={handlePrivacyPress}>Privacy Policy</Text>
             </Text>
           </View>
         </Animated.View>
@@ -164,13 +154,7 @@ export default function AuthLandingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  background: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+    backgroundColor: Colors.light.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -189,21 +173,28 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: Colors.light.card,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: Colors.light.primary,
   },
   appName: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   tagline: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
     textAlign: 'center',
   },
   welcomeContainer: {
@@ -212,13 +203,13 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: 'white',
+    color: Colors.light.text,
     textAlign: 'center',
     marginBottom: 12,
   },
   welcomeSubtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: Colors.light.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
   },
@@ -234,7 +225,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: Colors.light.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -245,25 +236,23 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: 'white',
+    color: Colors.light.text,
     marginBottom: 4,
   },
   featureDescription: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: Colors.light.textSecondary,
     lineHeight: 20,
   },
   actionsContainer: {
     marginBottom: 32,
   },
   primaryButton: {
+    backgroundColor: Colors.light.primary,
     borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  buttonGradient: {
     paddingVertical: 16,
     alignItems: 'center',
+    marginBottom: 16,
   },
   primaryButtonText: {
     color: 'white',
@@ -271,31 +260,30 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   secondaryButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: Colors.light.card,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: Colors.light.border,
   },
   secondaryButtonText: {
-    color: 'white',
+    color: Colors.light.text,
     fontSize: 16,
     fontWeight: '600',
   },
-
   footer: {
     alignItems: 'center',
   },
   footerText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: Colors.light.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
   },
   linkText: {
-    color: 'white',
+    color: Colors.light.primary,
     fontWeight: '600',
   },
 }); 

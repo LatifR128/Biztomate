@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 16,
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 16,
     borderWidth: 2,
     borderColor: Colors.light.primary,
   },
@@ -260,19 +260,19 @@ const styles = StyleSheet.create({
   },
   featuresContainer: {
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   featuresTitle: {
     fontSize: 22,
     fontWeight: '600',
     color: Colors.light.text,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   feature: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
     backgroundColor: Colors.light.card,
     padding: 16,
     borderRadius: 12,
@@ -302,14 +302,14 @@ const styles = StyleSheet.create({
   },
   plansPreview: {
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   plansTitle: {
     fontSize: 22,
     fontWeight: '600',
     color: Colors.light.text,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   planCards: {
     flexDirection: 'row',
@@ -362,13 +362,13 @@ const styles = StyleSheet.create({
   qrSection: {
     alignItems: 'center',
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 12,
   },
   qrTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: Colors.light.text,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   qrCode: {
     width: 120,
@@ -382,12 +382,12 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     paddingHorizontal: 24,
-    marginBottom: 32,
+    marginBottom: 8,
     alignItems: 'center',
   },
   getStartedButton: {
     paddingVertical: 16,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   viewPlansText: {
     fontSize: 16,
@@ -396,7 +396,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    paddingBottom: 40,
+    paddingBottom: 8,
+    paddingTop: 4,
   },
   brandingText: {
     fontSize: 14,

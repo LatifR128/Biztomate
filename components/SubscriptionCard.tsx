@@ -29,6 +29,8 @@ export default function SubscriptionCard({
   product 
 }: SubscriptionCardProps) {
   const isDisabled = !isAvailable || isCurrentPlan;
+  const displayPrice = product?.localizedPrice || price || plan.price;
+  const isProductAvailable = product !== undefined;
   
   const handlePress = () => {
     if (isDisabled) return;
@@ -63,7 +65,7 @@ export default function SubscriptionCard({
           )}
         </View>
         <Text style={[styles.price, isTablet && styles.priceTablet]}>
-          {price || plan.price}
+          {displayPrice}
         </Text>
       </View>
 
@@ -97,10 +99,10 @@ export default function SubscriptionCard({
           <TouchableOpacity
             style={[styles.subscribeButton, isTablet && styles.subscribeButtonTablet]}
             onPress={() => onSubscribe?.(plan)}
-            disabled={!isAvailable}
+            disabled={!isProductAvailable}
           >
             <Text style={[styles.subscribeButtonText, isTablet && styles.subscribeButtonTextTablet]}>
-              {isAvailable ? 'Subscribe' : 'Unavailable'}
+              {isProductAvailable ? 'Subscribe' : 'Loading...'}
             </Text>
           </TouchableOpacity>
         </View>

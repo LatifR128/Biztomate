@@ -1,11 +1,19 @@
 import { Platform, Alert } from 'react-native';
+import { 
+  initConnection, 
+  requestPurchase, 
+  finishTransaction,
+  Purchase,
+  Product
+} from 'react-native-iap';
+import { SUBSCRIPTION_PLANS } from '@/constants/subscriptions';
 
 // Apple Pay Configuration
 export const APPLE_PAY_CONFIG = {
   merchantIdentifier: 'merchant.com.biztomate.scanner', // Replace with your actual merchant ID
   supportedNetworks: ['visa', 'mastercard', 'amex', 'discover'] as const,
-  countryCode: 'US',
-  currencyCode: 'USD',
+  countryCode: 'CA', // Changed to Canada
+  currencyCode: 'CAD', // Changed to Canadian Dollar
   merchantCapabilities: ['supports3DS', 'supportsCredit', 'supportsDebit'] as const,
 };
 
@@ -21,6 +29,18 @@ export interface ApplePayStatus {
   isAvailable: boolean;
   canMakePayments: boolean;
   canMakePaymentsWithActiveCard: boolean;
+}
+
+// Subscription Purchase Result
+export interface SubscriptionPurchaseResult {
+  success: boolean;
+  error?: string;
+  transactionId?: string;
+  productId?: string;
+  receiptData?: string;
+  originalTransactionId?: string;
+  purchaseDate?: string;
+  expiresDate?: string;
 }
 
 /**
@@ -59,7 +79,7 @@ export const checkApplePayAvailability = async (): Promise<ApplePayStatus> => {
 export const createApplePayRequest = (
   paymentItems: PaymentRequest[],
   totalAmount: number,
-      merchantName: string = 'Biztomate'
+  merchantName: string = 'Biztomate'
 ) => {
   const paymentSummaryItems = [
     ...paymentItems.map(item => ({
@@ -86,6 +106,85 @@ export const createApplePayRequest = (
     shippingType: 'delivery',
     applicationData: 'biztomate-scanner-payment',
   };
+};
+
+/**
+ * Purchase subscription using Apple's StoreKit (not Apple Pay)
+ * This is the proper way to handle subscription purchases on iOS
+ */
+export const purchaseSubscriptionWithStoreKit = async (
+  productId: string
+): Promise<SubscriptionPurchaseResult> => {
+  try {
+    console.log('Starting StoreKit purchase for product:', productId);
+    
+    // Initialize IAP connection if not already done
+    try {
+      await initConnection();
+      console.log('IAP connection initialized');
+    } catch (error) {
+      console.log('IAP already initialized or connection failed:', error);
+    }
+    
+    // Find the subscription plan
+    const plan = SUBSCRIPTION_PLANS.find(p => p.productId === productId);
+    if (!plan) {
+      throw new Error('Subscription plan not found');
+    }
+    
+    console.log('Requesting purchase for:', plan.name);
+    
+    // Request the purchase - this will trigger Apple's native purchase flow
+    const purchase = await requestPurchase({ sku: productId });
+    
+    if (!purchase || (Array.isArray(purchase) && purchase.length === 0)) {
+      throw new Error('Purchase was cancelled or failed');
+    }
+    
+    const purchaseItem = Array.isArray(purchase) ? purchase[0] : purchase;
+    
+    console.log('Purchase successful, finishing transaction...');
+    
+    // Finish the transaction
+    await finishTransaction({ purchase: purchaseItem });
+    
+    console.log('Transaction finished successfully');
+    
+    return {
+      success: true,
+      transactionId: purchaseItem.transactionId || '',
+      productId: purchaseItem.productId || productId,
+      receiptData: purchaseItem.transactionReceipt || '',
+      originalTransactionId: purchaseItem.originalTransactionIdentifierIOS || '',
+      purchaseDate: new Date(purchaseItem.transactionDate || Date.now()).toISOString(),
+      expiresDate: purchaseItem.expirationDateIos ? new Date(purchaseItem.expirationDateIos).toISOString() : undefined,
+    };
+    
+  } catch (error: any) {
+    console.error('StoreKit purchase error:', error);
+    
+    // Handle specific error codes
+    let errorMessage = 'Purchase failed';
+    
+    if (error.code === 'E_ALREADY_OWNED') {
+      errorMessage = 'You already own this subscription';
+    } else if (error.code === 'E_USER_CANCELLED') {
+      errorMessage = 'Purchase was cancelled';
+    } else if (error.code === 'E_ITEM_UNAVAILABLE') {
+      errorMessage = 'This subscription is not available in the App Store';
+    } else if (error.code === 'E_NETWORK_ERROR') {
+      errorMessage = 'Network error. Please check your internet connection and try again';
+    } else if (error.message?.includes('Product not available')) {
+      errorMessage = 'Subscription not available in store. Please try again later.';
+    } else if (error.message?.includes('cancelled')) {
+      errorMessage = 'Purchase was cancelled';
+    }
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
 };
 
 /**

@@ -8,9 +8,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableWithoutFeedback,
+  Keyboard,
   Alert,
   Dimensions,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,8 +30,8 @@ const isTablet = width >= 768;
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, updateUser } = useUserStore();
-  const { changePassword, changeEmail, sendPasswordReset } = useAuthStore();
+  const { user: userData, updateUser } = useUserStore();
+  const { user: authUser, changePassword, changeEmail, sendPasswordReset } = useAuthStore();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -51,16 +54,19 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showEmailSection, setShowEmailSection] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
+  // Initialize form data from both auth user and user data
   useEffect(() => {
-    if (user) {
+    if (authUser && userData) {
       setFormData({
-        name: user.name || '',
-        email: user.email || '',
-        phone: user.phone || ''
+        name: userData.name || authUser.displayName || '',
+        email: authUser.email || userData.email || '',
+        phone: userData.phone || ''
       });
+      setIsLoadingProfile(false);
     }
-  }, [user]);
+  }, [authUser, userData]);
 
   const updateFormData = (field: string, value: string) => {
     const sanitizedValue = sanitizeInput(value);
@@ -148,21 +154,21 @@ export default function EditProfileScreen() {
     setLoading(true);
     
     try {
-      if (user) {
+      if (userData) {
         await updateUser({
           name: formData.name.trim(),
-          email: formData.email.trim().toLowerCase(),
           phone: formData.phone.trim() || undefined,
         });
         
         Alert.alert(
-          'Profile Updated',
+          '✅ Profile Updated',
           'Your profile has been updated successfully.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
       }
-    } catch (error) {
-      Alert.alert('Update Failed', 'Failed to update profile. Please try again.');
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      Alert.alert('❌ Update Failed', error.message || 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -177,7 +183,7 @@ export default function EditProfileScreen() {
       await changePassword(passwordData.currentPassword, passwordData.newPassword);
       
       Alert.alert(
-        'Password Changed',
+        '✅ Password Changed',
         'Your password has been changed successfully.',
         [
           {
@@ -190,7 +196,8 @@ export default function EditProfileScreen() {
         ]
       );
     } catch (error: any) {
-      Alert.alert('Password Change Failed', error.message);
+      console.error('Password change error:', error);
+      Alert.alert('❌ Password Change Failed', error.message || 'Failed to change password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -213,7 +220,7 @@ export default function EditProfileScreen() {
               await changeEmail(emailData.currentPassword, emailData.newEmail);
               
               Alert.alert(
-                'Email Changed',
+                '✅ Email Changed',
                 'Your email has been changed successfully. Please check your new email for verification.',
                 [
                   {
@@ -226,7 +233,8 @@ export default function EditProfileScreen() {
                 ]
               );
             } catch (error: any) {
-              Alert.alert('Email Change Failed', error.message);
+              console.error('Email change error:', error);
+              Alert.alert('❌ Email Change Failed', error.message || 'Failed to change email. Please try again.');
             } finally {
               setLoading(false);
             }
@@ -237,6 +245,8 @@ export default function EditProfileScreen() {
   };
 
   const handleForgotPassword = async () => {
+    const currentEmail = authUser?.email || userData?.email;
+    
     Alert.prompt(
       'Reset Password',
       'Enter your email address to receive a password reset link:',
@@ -246,7 +256,7 @@ export default function EditProfileScreen() {
           text: 'Send Reset Link',
           onPress: async (email) => {
             if (!email || !/\S+@\S+\.\S+/.test(email)) {
-              Alert.alert('Invalid Email', 'Please enter a valid email address.');
+              Alert.alert('❌ Invalid Email', 'Please enter a valid email address.');
               return;
             }
 
@@ -256,12 +266,13 @@ export default function EditProfileScreen() {
               await sendPasswordReset(email);
               
               Alert.alert(
-                'Reset Link Sent',
+                '✅ Reset Link Sent',
                 'A password reset link has been sent to your email address.',
                 [{ text: 'OK' }]
               );
             } catch (error: any) {
-              Alert.alert('Failed to Send Reset Link', error.message);
+              console.error('Password reset error:', error);
+              Alert.alert('❌ Failed to Send Reset Link', error.message || 'Failed to send reset link. Please try again.');
             } finally {
               setLoading(false);
             }
@@ -269,7 +280,7 @@ export default function EditProfileScreen() {
         }
       ],
       'plain-text',
-      user?.email || ''
+      currentEmail || ''
     );
   };
 
@@ -277,10 +288,21 @@ export default function EditProfileScreen() {
     router.back();
   };
 
+  // Show loading if user data is not available
+  if (isLoadingProfile || !authUser || !userData) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView 
       style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
@@ -291,7 +313,12 @@ export default function EditProfileScreen() {
         end={{ x: 1, y: 1 }}
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -323,23 +350,14 @@ export default function EditProfileScreen() {
             {formErrors.name && <Text style={styles.errorText}>{formErrors.name}</Text>}
           </View>
 
-          {/* Email Input */}
+          {/* Email Display (Read-only) */}
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Email Address</Text>
-            <View style={[styles.inputWrapper, formErrors.email && styles.inputError]}>
+            <View style={[styles.inputWrapper, styles.readOnlyInput]}>
               <Ionicons name="mail" size={20} color={Colors.light.textSecondary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your email"
-                placeholderTextColor={Colors.light.textSecondary}
-                value={formData.email}
-                onChangeText={(text) => updateFormData('email', text)}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <Text style={styles.readOnlyText}>{formData.email}</Text>
             </View>
-            {formErrors.email && <Text style={styles.errorText}>{formErrors.email}</Text>}
+            <Text style={styles.helperText}>Use the "Change Email" section below to update your email</Text>
           </View>
 
           {/* Phone Input */}
@@ -514,7 +532,7 @@ export default function EditProfileScreen() {
           )}
         </View>
 
-        {/* Save Profile Button - Moved to the end */}
+        {/* Save Profile Button */}
         <View style={styles.saveButtonContainer}>
           <TouchableOpacity
             style={[styles.saveButton, loading && styles.saveButtonDisabled]}
@@ -526,7 +544,8 @@ export default function EditProfileScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -627,6 +646,22 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     marginLeft: 12,
   },
+  readOnlyInput: {
+    backgroundColor: '#f8f9fa',
+    borderColor: Colors.light.border,
+  },
+  readOnlyText: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+    marginLeft: 12,
+  },
+  helperText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   errorText: {
     color: Colors.light.error,
     fontSize: 12,
@@ -689,5 +724,15 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.light.background,
+  },
+  loadingText: {
+    fontSize: 18,
+    color: Colors.light.text,
   },
 }); 

@@ -49,9 +49,20 @@ export default function SubscriptionScreen() {
   // Load products on component mount
   useEffect(() => {
     if (isInitialized) {
+      console.log('IAP initialized, fetching products...');
       fetchProducts();
+    } else {
+      console.log('IAP not yet initialized...');
     }
   }, [isInitialized, fetchProducts]);
+
+  // Debug logging for products
+  useEffect(() => {
+    console.log('Products loaded:', products.length);
+    products.forEach(product => {
+      console.log('Product:', product.productId, product.localizedPrice);
+    });
+  }, [products]);
 
   // Handle product selection
   const handlePlanSelect = (planId: string) => {
@@ -61,27 +72,68 @@ export default function SubscriptionScreen() {
   // Handle subscription purchase
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     if (!isInitialized) {
-      Alert.alert('Error', SUBSCRIPTION_ERRORS.NOT_INITIALIZED);
+      Alert.alert(
+        'Service Unavailable', 
+        'Subscription services are temporarily unavailable. This may be due to network issues or App Store maintenance. Please try again later.',
+        [
+          { text: 'Retry', onPress: () => fetchProducts() },
+          { text: 'OK', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    // Check if products are loaded
+    if (products.length === 0) {
+      Alert.alert(
+        'Loading Subscriptions', 
+        'Please wait while we load the latest subscription options from the App Store.',
+        [
+          { text: 'Load Now', onPress: async () => {
+            setIsProcessing(true);
+            await fetchProducts();
+            setIsProcessing(false);
+          }},
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
       return;
     }
 
     // Check if product is available
-    const product = products.find(p => p.id === plan.productId);
+    const product = products.find(p => p.productId === plan.productId);
     if (!product) {
-      Alert.alert('Product Unavailable', SUBSCRIPTION_ERRORS.UNAVAILABLE);
+      Alert.alert(
+        'Subscription Temporarily Unavailable', 
+        `The ${plan.name} subscription is temporarily unavailable. This may be due to App Store Connect configuration or regional restrictions. Please try refreshing or contact support.`,
+        [
+          { text: 'Refresh', onPress: () => fetchProducts() },
+          { text: 'Contact Support', onPress: () => {
+            // Add support contact action if needed
+          }},
+          { text: 'OK', style: 'cancel' }
+        ]
+      );
       return;
     }
 
     setIsProcessing(true);
 
     try {
+      console.log('Starting subscription purchase for:', plan.name);
+      
+      // This will trigger Apple's native purchase flow with authentication
       const result = await purchaseSubscription(plan.productId);
       
       if (result.success && result.receiptData) {
+        console.log('Purchase successful, validating receipt...');
+        
         // Validate receipt
-        const validationResult = await validateReceipt(result.receiptData);
+        const validationResult = await validateReceipt(result.receiptData, plan.productId);
         
         if (validationResult.success) {
+          console.log('Receipt validation successful, updating subscription...');
+          
           // Update user subscription
           updateSubscription(plan.id as any);
           
@@ -108,9 +160,11 @@ export default function SubscriptionScreen() {
             ]
           );
         } else {
+          console.error('Receipt validation failed:', validationResult.error);
           Alert.alert('Validation Failed', validationResult.error || SUBSCRIPTION_ERRORS.VALIDATION_FAILED);
         }
       } else {
+        console.error('Purchase failed:', result.error);
         Alert.alert('Purchase Failed', result.error || SUBSCRIPTION_ERRORS.PURCHASE_FAILED);
       }
     } catch (error: any) {
@@ -167,16 +221,6 @@ export default function SubscriptionScreen() {
     }
   };
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.light.primary} />
-        <Text style={styles.loadingText}>Loading subscription plans...</Text>
-      </View>
-    );
-  }
-
   // Show error state
   if (iapError) {
     return (
@@ -186,9 +230,28 @@ export default function SubscriptionScreen() {
         <Text style={styles.errorText}>{iapError}</Text>
         <Button 
           title="Try Again" 
-          onPress={() => fetchProducts()} 
+          onPress={() => {
+            console.log('Retrying product fetch...');
+            fetchProducts();
+          }} 
           style={styles.retryButton} 
         />
+        <Button 
+          title="Go Back" 
+          onPress={() => router.back()} 
+          variant="outline"
+          style={styles.retryButton} 
+        />
+      </View>
+    );
+  }
+
+  // Show loading state
+  if (isLoading && products.length === 0) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <Text style={styles.loadingText}>Loading subscription plans...</Text>
       </View>
     );
   }
@@ -235,10 +298,28 @@ export default function SubscriptionScreen() {
               onSelect={() => handlePlanSelect(plan.id)}
               onSubscribe={() => handleSubscribe(plan)}
               isCurrentPlan={user?.subscriptionPlan === plan.id}
-              product={products.find(p => p.id === plan.productId)}
+              product={products.find(p => p.productId === plan.productId)}
             />
           ))}
         </View>
+
+        {/* Show message if no products loaded */}
+        {isInitialized && products.length === 0 && !isLoading && (
+          <View style={[styles.noProductsContainer, isTablet && styles.noProductsContainerTablet]}>
+            <Ionicons name="information-circle" size={48} color={Colors.light.textSecondary} />
+            <Text style={[styles.noProductsTitle, isTablet && styles.noProductsTitleTablet]}>
+              Subscription Options Unavailable
+            </Text>
+            <Text style={[styles.noProductsText, isTablet && styles.noProductsTextTablet]}>
+              We're unable to load subscription options from the App Store. Please check your internet connection and try again.
+            </Text>
+            <Button 
+              title="Refresh" 
+              onPress={() => fetchProducts()} 
+              style={styles.refreshButton} 
+            />
+          </View>
+        )}
 
         {/* Restore Purchases */}
         <View style={[styles.restoreContainer, isTablet && styles.restoreContainerTablet]}>
@@ -461,5 +542,50 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     minWidth: 120,
+  },
+  noProductsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    backgroundColor: Colors.light.card,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 24,
+  },
+  noProductsContainerTablet: {
+    marginHorizontal: 48,
+    marginBottom: 32,
+    paddingVertical: 50,
+    paddingHorizontal: 40,
+    borderRadius: 20,
+  },
+  noProductsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noProductsTitleTablet: {
+    fontSize: 24,
+    marginBottom: 10,
+  },
+  noProductsText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  noProductsTextTablet: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  refreshButton: {
+    backgroundColor: Colors.light.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
   },
 });

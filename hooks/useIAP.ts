@@ -1,401 +1,527 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Platform, Alert } from 'react-native';
-import {
-  initConnection,
-  endConnection,
-  getProducts,
-  requestPurchase,
+import { 
+  initConnection, 
+  getProducts, 
+  requestPurchase, 
   finishTransaction,
   getAvailablePurchases,
-  Product,
   Purchase,
-  PurchaseError,
+  Product,
   SubscriptionPurchase,
-  ProductPurchase
+  acknowledgePurchaseAndroid,
+  validateReceiptIos,
+  validateReceiptAndroid
 } from 'react-native-iap';
-import { SUBSCRIPTION_PLANS, SUBSCRIPTION_ERRORS } from '@/constants/subscriptions';
+import { useUserStore } from '@/store/userStore';
+import { useReceiptStore } from '@/store/receiptStore';
+import { SUBSCRIPTION_PLANS, IAP_CONFIG } from '@/constants/subscriptions';
 
-export interface ProductInfo {
-  id: string;
-  title: string;
-  description: string;
-  price: string;
-  priceAmount: number;
-  currency: string;
-}
-
-export interface PurchaseResult {
-  success: boolean;
-  error?: string;
-  transactionId?: string;
-  productId?: string;
-  receiptData?: string;
-  originalTransactionId?: string;
-  purchaseDate?: string;
-  expiresDate?: string;
-}
-
-export interface ReceiptValidationResult {
-  success: boolean;
-  environment?: string;
-  endpoint?: string;
-  subscription?: {
-    isValid: boolean;
-    productId?: string;
-    expiresDate?: string;
-    isExpired: boolean;
-    environment?: string;
-  };
-  error?: string;
-  statusCode?: number;
-  message?: string;
-}
-
-export interface IAPState {
+interface IAPState {
   isInitialized: boolean;
   isLoading: boolean;
-  products: ProductInfo[];
+  products: Product[];
   error: string | null;
+  isDevelopmentMode?: boolean;
 }
 
-export const useIAP = () => {
+interface PurchaseResult {
+  success: boolean;
+  productId?: string;
+  transactionId?: string;
+  originalTransactionId?: string;
+  receiptData?: string;
+  purchaseDate?: string;
+  expiresDate?: string;
+  error?: string;
+}
+
+interface ValidationResult {
+  success: boolean;
+  environment?: string;
+  subscription?: {
+    isActive: boolean;
+    isExpired: boolean;
+    productId: string;
+    expiresDate: string;
+    originalPurchaseDate: string;
+    originalTransactionId: string;
+    autoRenewStatus: boolean;
+    environment: 'Production' | 'Sandbox';
+  };
+  error?: string;
+}
+
+interface RestoreResult {
+  success: boolean;
+  productId?: string;
+  transactionId?: string;
+  error?: string;
+  restoredCount?: number;
+}
+
+interface IAPActions {
+  fetchProducts: () => Promise<void>;
+  purchaseSubscription: (productId: string) => Promise<PurchaseResult>;
+  validateReceipt: (receipt: string, productId: string) => Promise<ValidationResult>;
+  restorePurchases: () => Promise<RestoreResult[]>;
+}
+
+export const useIAP = (): IAPState & IAPActions => {
   const [state, setState] = useState<IAPState>({
     isInitialized: false,
     isLoading: false,
     products: [],
     error: null,
+    isDevelopmentMode: __DEV__ && Platform.OS === 'web',
   });
 
+  const { updateSubscription } = useUserStore();
+  const { addReceipt } = useReceiptStore();
+
   // Initialize IAP connection
-  const initializeIAP = useCallback(async () => {
-    if (Platform.OS !== 'ios') {
-      console.log('⚠️ IAP only available on iOS');
-      return;
-    }
+  useEffect(() => {
+    initializeIAP();
+  }, []);
 
-    if (state.isInitialized) {
-      console.log('ℹ️ IAP already initialized');
-      return;
-    }
-
+  const initializeIAP = async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      console.log('🔄 Initializing IAP connection...');
-      await initConnection();
+      console.log('🔧 Initializing IAP connection...');
       
+      // Allow all platforms for development and testing
+      if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+        console.log('⚠️ IAP not supported on this platform, using mock mode');
+      }
+      
+      await initConnection();
+      console.log('✅ IAP connection initialized successfully');
       setState(prev => ({ 
         ...prev, 
         isInitialized: true, 
         isLoading: false 
       }));
       
-      console.log('✅ IAP initialized successfully');
+      // Fetch products after initialization
+      await fetchProducts();
     } catch (error: any) {
-      console.error('❌ Failed to initialize IAP:', error);
+      console.error('❌ IAP initialization error:', error);
       setState(prev => ({ 
         ...prev, 
-        isInitialized: false,
-        isLoading: false,
-        error: SUBSCRIPTION_ERRORS.NOT_INITIALIZED
+        isLoading: false, 
+        error: error.message || 'Failed to initialize IAP' 
       }));
     }
-  }, [state.isInitialized]);
+  };
 
-  // Fetch products from App Store
-  const fetchProducts = useCallback(async () => {
-    if (!state.isInitialized) {
-      console.log('🔄 IAP not initialized, initializing first...');
-      await initializeIAP();
-    }
-
+  const fetchProducts = async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
-
+      
+      console.log('🛍️ Fetching IAP products...');
+      console.log('🔗 Subscription Group Bundle ID:', IAP_CONFIG.SUBSCRIPTION_GROUP_BUNDLE_ID);
+      
       // Get product IDs from subscription plans
       const productIds = SUBSCRIPTION_PLANS.map(plan => plan.productId);
+      console.log('📋 Product IDs to fetch:', productIds);
       
-      console.log('🔄 Fetching products from App Store...');
-      console.log('📋 Product IDs:', productIds);
+      // Enhanced product fetching with subscription group context
+      const products = await getProducts({ 
+        skus: productIds
+      });
+      console.log('📦 Fetched products:', products);
       
-      const products = await getProducts({ skus: productIds });
-      
-      console.log('📦 Raw products response:', products);
-      console.log('📊 Products count:', products?.length || 0);
-      
-      if (products && products.length > 0) {
-        const productInfos: ProductInfo[] = products.map(product => ({
-          id: product.productId,
-          title: product.title,
-          description: product.description,
-          price: product.localizedPrice,
-          priceAmount: parseFloat(product.price.replace(/[^0-9.]/g, '')),
-          currency: product.currency || 'USD',
-        }));
-
-        console.log('✅ Successfully mapped products:', productInfos);
-
+      if (!products || products.length === 0) {
+        console.log('⚠️ No products found - this may be due to App Store Connect approval pending or network issues');
+        
+        // In development or when products unavailable, create mock products for testing
+        if (__DEV__ || Platform.OS === 'web') {
+          console.log('🛠️ Creating mock products for development/testing');
+          const mockProducts = SUBSCRIPTION_PLANS.map(plan => ({
+            productId: plan.productId,
+            title: plan.name,
+            description: `${plan.name} Subscription`,
+            price: plan.price,
+            localizedPrice: plan.price,
+            currency: 'CAD'
+          })) as Product[];
+          
+          setState(prev => ({ 
+            ...prev, 
+            products: mockProducts, 
+            isLoading: false,
+            isDevelopmentMode: true,
+            error: null
+          }));
+          return;
+        }
+        
+        // Production fallback - show error but don't crash
         setState(prev => ({ 
           ...prev, 
-          products: productInfos,
-          isLoading: false 
-        }));
-        
-        console.log('✅ Successfully fetched products:', productInfos.length);
-      } else {
-        console.error('❌ No products returned from App Store');
-        console.log('🔍 This could mean:');
-        console.log('   - Product IDs are incorrect');
-        console.log('   - Products are not configured in App Store Connect');
-        console.log('   - App is not in review/approved state');
-        console.log('   - Network connectivity issues');
-        
-        setState(prev => ({ 
-          ...prev, 
-          products: [],
+          products: [], 
           isLoading: false,
-          error: SUBSCRIPTION_ERRORS.PRODUCTS_NOT_AVAILABLE
+          error: 'Products temporarily unavailable. Please try again later.'
         }));
+        return;
       }
-    } catch (error: any) {
-      console.error('❌ Error fetching products:', error);
       
       setState(prev => ({ 
         ...prev, 
-        products: [],
-        isLoading: false,
-        error: SUBSCRIPTION_ERRORS.NETWORK_ERROR
+        products, 
+        isLoading: false 
+      }));
+      
+      console.log('✅ Products loaded successfully:', products.length);
+    } catch (error: any) {
+      console.error('❌ Error fetching products:', error);
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: error.message || 'Failed to fetch products' 
       }));
     }
-  }, [state.isInitialized, initializeIAP]);
+  };
 
-  // Purchase a subscription
-  const purchaseSubscription = useCallback(async (productId: string): Promise<PurchaseResult> => {
-    if (Platform.OS !== 'ios') {
-      return {
-        success: false,
-        error: 'In-app purchases are only available on iOS',
-      };
-    }
-
-    if (!state.isInitialized) {
-      return {
-        success: false,
-        error: SUBSCRIPTION_ERRORS.NOT_INITIALIZED,
-      };
-    }
-
-    // Check if product is available
-    const product = state.products.find(p => p.id === productId);
-    if (!product) {
-      console.error('❌ Product not found:', productId);
-      console.log('📋 Available products:', state.products.map(p => p.id));
-      return {
-        success: false,
-        error: SUBSCRIPTION_ERRORS.UNAVAILABLE,
-      };
-    }
-
+  const purchaseSubscription = async (productId: string): Promise<PurchaseResult> => {
     try {
-      console.log('🔄 Processing purchase for product:', productId);
+      setState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Request the purchase
+      console.log('💳 Starting purchase for product:', productId);
+      
+      // Check if we have the product
+      const product = state.products.find(p => p.productId === productId);
+      if (!product) {
+        // Graceful fallback - try to fetch products again
+        console.log('⚠️ Product not found locally, attempting to refresh products...');
+        await fetchProducts();
+        
+        // Check again after refresh
+        const refreshedProduct = state.products.find(p => p.productId === productId);
+        if (!refreshedProduct) {
+          throw new Error('Product temporarily unavailable. This may be due to App Store Connect configuration. Please try again later or contact support.');
+        }
+      }
+      
+      console.log('✅ Product found, requesting purchase...');
+      
+      // Request the purchase - this will trigger Apple's native purchase flow
+      // This is where the user will see the Apple authentication dialog
       const purchase = await requestPurchase({ sku: productId });
+      console.log('📱 Purchase initiated:', purchase);
       
-      if (purchase && Array.isArray(purchase) && purchase.length > 0) {
-        const purchaseItem = purchase[0];
+      if (!purchase || (Array.isArray(purchase) && purchase.length === 0)) {
+        throw new Error('Purchase was cancelled or failed');
+      }
+      
+      const purchaseItem = Array.isArray(purchase) ? purchase[0] : purchase;
+      
+      console.log('✅ Purchase successful, finishing transaction...');
+      
+      // Finish transaction
+      await finishTransaction({ purchase: purchaseItem });
+      console.log('✅ Transaction finished');
+      
+      // Validate receipt with enhanced backend
+      const validationResult = await validateReceipt(purchaseItem.transactionReceipt || '', productId);
+      
+      if (validationResult.success && validationResult.subscription) {
+        console.log('✅ Receipt validation successful');
         
-        // Finish the transaction
-        await finishTransaction({ purchase: purchaseItem });
+        // Update user subscription
+        const plan = SUBSCRIPTION_PLANS.find(p => p.productId === productId);
+        if (plan) {
+          await updateSubscription(plan.id as any);
+          console.log('✅ Subscription updated to:', plan.id);
+        }
         
-        console.log('✅ Purchase successful:', purchaseItem);
+        // Save receipt with enhanced data
+        addReceipt({
+          productId,
+          transactionId: purchaseItem.transactionId || '',
+          originalTransactionId: purchaseItem.originalTransactionIdentifierIOS || '',
+          receiptData: purchaseItem.transactionReceipt || '',
+          purchaseDate: validationResult.subscription.originalPurchaseDate,
+          isValid: true,
+          environment: validationResult.subscription.environment,
+        });
+        
+        setState(prev => ({ ...prev, isLoading: false }));
         
         return {
           success: true,
-          transactionId: purchaseItem.transactionId,
-          productId: purchaseItem.productId,
-          receiptData: purchaseItem.transactionReceipt,
-          originalTransactionId: purchaseItem.originalTransactionIdentifierIOS,
-          purchaseDate: String(purchaseItem.transactionDate || Date.now()),
-          expiresDate: purchaseItem.expirationDateIos ? String(purchaseItem.expirationDateIos) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          productId,
+          transactionId: purchaseItem.transactionId || '',
+          originalTransactionId: purchaseItem.originalTransactionIdentifierIOS || '',
+          receiptData: purchaseItem.transactionReceipt || '',
+          purchaseDate: validationResult.subscription.originalPurchaseDate,
+          expiresDate: validationResult.subscription.expiresDate,
         };
       } else {
-        return {
-          success: false,
-          error: SUBSCRIPTION_ERRORS.CANCELLED,
-        };
+        throw new Error(validationResult.error || 'Receipt validation failed');
       }
+      
     } catch (error: any) {
       console.error('❌ Purchase error:', error);
-      
-      // Handle specific error codes
-      let errorMessage = SUBSCRIPTION_ERRORS.PURCHASE_FAILED;
-      
-      if (error.code === 'E_ALREADY_OWNED') {
-        errorMessage = SUBSCRIPTION_ERRORS.ALREADY_OWNED;
-      } else if (error.code === 'E_USER_CANCELLED') {
-        errorMessage = SUBSCRIPTION_ERRORS.CANCELLED;
-      } else if (error.code === 'E_ITEM_UNAVAILABLE') {
-        errorMessage = SUBSCRIPTION_ERRORS.UNAVAILABLE;
-      } else if (error.code === 'E_NETWORK_ERROR') {
-        errorMessage = SUBSCRIPTION_ERRORS.NETWORK_ERROR;
-      }
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: error.message || 'Purchase failed' 
+      }));
       
       return {
         success: false,
-        error: errorMessage,
+        error: error.message || 'Purchase failed'
       };
     }
-  }, [state.isInitialized, state.products]);
+  };
 
-  // Restore purchases
-  const restorePurchases = useCallback(async (): Promise<PurchaseResult[]> => {
-    if (Platform.OS !== 'ios') {
-      return [{
-        success: false,
-        error: 'In-app purchases are only available on iOS',
-      }];
-    }
-
-    if (!state.isInitialized) {
-      return [{
-        success: false,
-        error: SUBSCRIPTION_ERRORS.NOT_INITIALIZED,
-      }];
-    }
-
+  const validateReceiptWithServer = async (receipt: string, productId: string): Promise<ValidationResult> => {
     try {
-      console.log('🔄 Restoring purchases...');
+      console.log('🔍 Validating receipt with enhanced server...');
       
-      const purchases = await getAvailablePurchases();
+      // Send receipt to your backend for validation with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
       
-      if (purchases && purchases.length > 0) {
-        const results: PurchaseResult[] = purchases.map(purchase => ({
-          success: true,
-          transactionId: purchase.transactionId,
-          productId: purchase.productId,
-          receiptData: purchase.transactionReceipt,
-          originalTransactionId: purchase.originalTransactionIdentifierIOS,
-          purchaseDate: String(purchase.transactionDate || Date.now()),
-          expiresDate: purchase.expirationDateIos ? String(purchase.expirationDateIos) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        }));
-
-        console.log('✅ Restored purchases:', results.length);
-        return results;
-      } else {
-        console.log('ℹ️ No purchases found to restore');
-        return [{
-          success: false,
-          error: 'No previous purchases found',
-        }];
-      }
-    } catch (error: any) {
-      console.error('❌ Restore purchases error:', error);
-      
-      return [{
-        success: false,
-        error: SUBSCRIPTION_ERRORS.RESTORE_FAILED,
-      }];
-    }
-  }, [state.isInitialized]);
-
-  // Validate receipt on server
-  const validateReceipt = useCallback(async (receiptData: string): Promise<ReceiptValidationResult> => {
-    try {
-      console.log('🔄 Validating receipt on server...');
-      
-      const response = await fetch('/api/receipt-validation', {
+      const response = await fetch(IAP_CONFIG.BACKEND_VALIDATION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          receipt: receiptData,
-          password: '1545f3c5d2c6493da6b799f9602aab94', // Your shared secret
+          receipt,
+          productId,
+          platform: Platform.OS,
         }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Server validation failed: ${response.status}`);
+      }
 
       const result = await response.json();
       
-      if (response.ok && result.success) {
-        console.log('✅ Receipt validation successful:', {
-          message: result.message,
-          data: result.data,
-        });
-
+      if (result.success && result.subscription) {
+        console.log('✅ Enhanced server validation successful');
+        console.log(`📊 Subscription Status: ${result.subscription.isActive ? 'ACTIVE' : 'EXPIRED'}`);
+        console.log(`📅 Expires: ${result.subscription.expiresDate}`);
+        console.log(`🏷️ Product: ${result.subscription.productId}`);
+        console.log(`🌍 Environment: ${result.subscription.environment}`);
+        
         return {
           success: true,
-          environment: result.data?.environment || 'production',
-          endpoint: result.data?.environment || 'production',
-          subscription: {
-            isValid: true,
-            productId: result.data?.latest_receipt_info?.[0]?.product_id,
-            expiresDate: result.data?.latest_receipt_info?.[0]?.expires_date,
-            isExpired: false,
-            environment: result.data?.environment || 'production',
-          },
-          statusCode: result.data?.status || 0,
-          message: result.message,
+          environment: result.subscription.environment,
+          subscription: result.subscription
         };
       } else {
-        console.error('❌ Receipt validation failed:', result);
+        console.log('❌ Enhanced server validation failed:', result.error);
         return {
           success: false,
-          error: SUBSCRIPTION_ERRORS.VALIDATION_FAILED,
-          statusCode: result.data?.status,
-          message: result.message,
+          error: result.error || result.message || 'Validation failed'
+        };
+      }
+    } catch (error: any) {
+      console.error('❌ Enhanced server validation error:', error);
+      throw error;
+    }
+  };
+
+  const validateReceipt = async (receipt: string, productId: string): Promise<ValidationResult> => {
+    try {
+      console.log('🔍 Validating receipt for product:', productId);
+      
+      // First try server-side validation with timeout and fallback
+      try {
+        const serverValidation = await Promise.race([
+          validateReceiptWithServer(receipt, productId),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Server validation timeout')), 10000)
+          )
+        ]) as ValidationResult;
+        
+        if (serverValidation.success) {
+          console.log('✅ Server validation successful');
+          return serverValidation;
+        } else {
+          console.log('❌ Server validation failed:', serverValidation.error);
+        }
+      } catch (serverError) {
+        console.log('⚠️ Server validation unavailable, using local validation:', serverError);
+      }
+      
+      // Fallback to local validation
+      if (Platform.OS === 'ios') {
+        console.log('🔍 Using iOS local validation...');
+        
+        // iOS receipt validation
+        const validationResult = await validateReceiptIos({
+          receiptBody: {
+            'receipt-data': receipt,
+            'password': IAP_CONFIG.APPLE_SHARED_SECRET,
+          },
+        });
+        
+        console.log('📊 iOS validation result:', validationResult);
+        return {
+          success: validationResult.valid === true,
+          environment: validationResult.environment || 'Production'
+        };
+      } else if (Platform.OS === 'android') {
+        console.log('🔍 Using Android local validation...');
+        
+        // Android receipt validation
+        const validationResult = await validateReceiptAndroid({
+          packageName: IAP_CONFIG.ANDROID_PACKAGE_NAME,
+          productId,
+          productToken: receipt,
+          accessToken: IAP_CONFIG.ANDROID_ACCESS_TOKEN,
+        });
+        
+        console.log('📊 Android validation result:', validationResult);
+        return {
+          success: validationResult.valid === true,
+          environment: 'Production'
         };
       }
       
+      return { success: false, error: 'Platform not supported' };
     } catch (error: any) {
       console.error('❌ Receipt validation error:', error);
-      
-      return {
-        success: false,
-        error: SUBSCRIPTION_ERRORS.VALIDATION_FAILED,
-        message: error.message || 'Network error during validation',
-      };
+      return { success: false, error: error.message || 'Validation failed' };
     }
-  }, []);
+  };
 
-  // Disconnect IAP
-  const disconnectIAP = useCallback(async () => {
-    if (Platform.OS !== 'ios' || !state.isInitialized) {
-      return;
-    }
-
+  const restorePurchases = async (): Promise<RestoreResult[]> => {
     try {
-      await endConnection();
+      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      console.log('🔄 Restoring purchases...');
+      
+      // ✅ FIXED: Get available purchases from App Store
+      const availablePurchases = await getAvailablePurchases();
+      console.log('📱 Available purchases:', availablePurchases);
+      
+      if (!availablePurchases || availablePurchases.length === 0) {
+        setState(prev => ({ ...prev, isLoading: false }));
+        
+        Alert.alert(
+          'No Purchases Found',
+          'No previous purchases were found to restore.',
+          [{ text: 'OK' }]
+        );
+        
+        return [{ success: true, restoredCount: 0 }];
+      }
+      
+      const restoredPurchases: RestoreResult[] = [];
+      
+      // Process each available purchase
+      for (const purchase of availablePurchases) {
+        try {
+          console.log('🔍 Processing purchase:', purchase.productId);
+          
+          // Validate the receipt with enhanced backend
+          const validationResult = await validateReceipt(
+            purchase.transactionReceipt || '', 
+            purchase.productId
+          );
+          
+          if (validationResult.success && validationResult.subscription?.isActive) {
+            console.log('✅ Purchase restored successfully:', purchase.productId);
+            
+            // Update user subscription
+            const plan = SUBSCRIPTION_PLANS.find(p => p.productId === purchase.productId);
+            if (plan) {
+              await updateSubscription(plan.id as any);
+              console.log('✅ Subscription updated to:', plan.id);
+            }
+            
+            // Save receipt with enhanced data
+            if (validationResult.subscription) {
+              addReceipt({
+                productId: purchase.productId,
+                transactionId: purchase.transactionId || '',
+                originalTransactionId: purchase.originalTransactionIdentifierIOS || '',
+                receiptData: purchase.transactionReceipt || '',
+                purchaseDate: validationResult.subscription.originalPurchaseDate,
+                isValid: true,
+                environment: validationResult.subscription.environment,
+              });
+            }
+            
+            restoredPurchases.push({
+              success: true,
+              productId: purchase.productId,
+              transactionId: purchase.transactionId || ''
+            });
+          } else {
+            console.log('❌ Purchase validation failed or expired:', purchase.productId);
+            restoredPurchases.push({
+              success: false,
+              productId: purchase.productId,
+              error: validationResult.error || 'Subscription expired'
+            });
+          }
+        } catch (error: any) {
+          console.error('❌ Error processing purchase:', purchase.productId, error);
+          restoredPurchases.push({
+            success: false,
+            productId: purchase.productId,
+            error: error.message || 'Processing failed'
+          });
+        }
+      }
+      
+      setState(prev => ({ ...prev, isLoading: false }));
+      
+      // ✅ FIXED: Show proper success/error message based on actual results
+      const successfulRestores = restoredPurchases.filter(r => r.success);
+      
+      if (successfulRestores.length > 0) {
+        Alert.alert(
+          'Purchases Restored',
+          `Successfully restored ${successfulRestores.length} active subscription(s).`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Restore Failed', 
+          'No valid active subscriptions could be restored. Please try again or contact support.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      return restoredPurchases;
+      
+    } catch (error: any) {
+      console.error('❌ Restore purchases error:', error);
       setState(prev => ({ 
         ...prev, 
-        isInitialized: false,
-        products: []
+        isLoading: false, 
+        error: error.message || 'Failed to restore purchases' 
       }));
-      console.log('✅ IAP disconnected');
-    } catch (error) {
-      console.error('❌ Failed to disconnect IAP:', error);
+      
+      // ✅ FIXED: Show proper error message
+      Alert.alert(
+        'Restore Failed',
+        `Failed to restore purchases: ${error.message || 'Unknown error'}. Please check your internet connection and try again.`,
+        [{ text: 'OK' }]
+      );
+      
+      return [{ success: false, error: error.message || 'Failed to restore purchases' }];
     }
-  }, [state.isInitialized]);
-
-  // Initialize on mount
-  useEffect(() => {
-    console.log('🚀 useIAP hook mounted');
-    initializeIAP();
-    
-    // Cleanup on unmount
-    return () => {
-      console.log('🧹 useIAP hook unmounting');
-      disconnectIAP();
-    };
-  }, []);
+  };
 
   return {
     ...state,
-    initializeIAP,
     fetchProducts,
     purchaseSubscription,
-    restorePurchases,
     validateReceipt,
-    disconnectIAP,
+    restorePurchases,
   };
-}; 
+};

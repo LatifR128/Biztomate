@@ -12,6 +12,10 @@ export interface BusinessCard {
   createdAt: number;
   updatedAt: number;
   _fallbackId?: string; // Optional identifier for fallback data
+  _isFallback?: boolean; // Enhanced fallback flag
+  _manualOverride?: boolean; // Flag for manually added duplicates
+  deviceId?: string; // Device identifier for tracking
+  deviceLabel?: string; // Human-readable device name
 }
 
 export interface User {

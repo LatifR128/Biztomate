@@ -9,13 +9,13 @@ import {
   deleteDoc, 
   query, 
   where, 
-  getDocs, 
-  onSnapshot,
+  getDocs,
   orderBy,
   serverTimestamp 
 } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { BusinessCard } from '@/types';
+import { processBusinessCard, normalizeForComparison } from '@/utils/ocrUtils';
 
 interface CardState {
   cards: BusinessCard[];
@@ -24,82 +24,42 @@ interface CardState {
   
   // Actions
   addCard: (card: BusinessCard) => Promise<boolean>;
+  getCard: (id: string) => BusinessCard | null;
   updateCard: (id: string, updates: Partial<BusinessCard>) => Promise<void>;
   deleteCard: (id: string) => Promise<void>;
-  getCard: (id: string) => BusinessCard | undefined;
-  searchCards: (query: string) => BusinessCard[];
-  clearAllCards: () => void;
-  cleanupFallbackCards: () => Promise<void>;
-  checkDuplicate: (card: BusinessCard) => BusinessCard | null;
+  loadCards: () => Promise<void>;
   syncCards: () => Promise<void>;
-  subscribeToCards: () => (() => void) | null;
+  searchCards: (query: string) => BusinessCard[];
+  checkDuplicate: (card: BusinessCard) => BusinessCard | null;
+  cleanupFallbackCards: () => Promise<void>;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
 }
 
-export const useCardStore = create<CardState>()(
-  persist(
-    (set, get) => ({
-      cards: [],
-      isLoading: false,
-      error: null,
+export const useCardStore = create<CardState>((set, get) => ({
+  cards: [],
+  isLoading: false,
+  error: null,
+
+  addCard: async (card: BusinessCard): Promise<boolean> => {
+    try {
+      console.log('🚀 Adding card to store:', card.name);
       
-      addCard: async (card: BusinessCard) => {
+      const currentUser = auth?.currentUser;
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      // Add to local state immediately for faster UI response
+      set(state => ({
+        cards: [...state.cards, card],
+        isLoading: false,
+        error: null
+      }));
+
+      // Firestore sync in background (non-blocking)
+      if (db) {
         try {
-          set({ isLoading: true, error: null });
-          
-          const currentUser = auth?.currentUser;
-          if (!currentUser || !db) {
-            throw new Error('User not authenticated or database not available');
-          }
-          
-          // Skip duplicate check for fallback data
-          if (!card._fallbackId) {
-            // Check for duplicates locally using improved logic
-            const { cards } = get();
-            const duplicate = cards.find(existingCard => {
-              // Skip fallback cards in comparison
-              if (existingCard._fallbackId) {
-                return false;
-              }
-              
-              // Check for exact email match (if both have emails)
-              if (card.email && existingCard.email && 
-                  card.email.toLowerCase().trim() === existingCard.email.toLowerCase().trim()) {
-                return true;
-              }
-              
-              // Check for exact phone match (if both have phones)
-              if (card.phone && existingCard.phone && 
-                  card.phone.replace(/\D/g, '') === existingCard.phone.replace(/\D/g, '')) {
-                return true;
-              }
-              
-              // Check for name + company combination (more accurate than just name)
-              if (card.name && existingCard.name) {
-                const nameMatch = card.name.toLowerCase().trim() === existingCard.name.toLowerCase().trim();
-                
-                // If names match, also check if companies match (if both have companies)
-                if (nameMatch) {
-                  if (card.company && existingCard.company) {
-                    return card.company.toLowerCase().trim() === existingCard.company.toLowerCase().trim();
-                  } else if (!card.company && !existingCard.company) {
-                    // Both have no company, so it's likely a duplicate
-                    return true;
-                  }
-                  // One has company, one doesn't - might be different people
-                  return false;
-                }
-              }
-              
-              return false;
-            });
-            
-            if (duplicate) {
-              set({ isLoading: false, error: 'Duplicate card detected' });
-              return false;
-            }
-          }
-          
-          // Add to Firestore
           const cardData = {
             ...card,
             userId: currentUser.uid,
@@ -107,222 +67,140 @@ export const useCardStore = create<CardState>()(
             updatedAt: serverTimestamp(),
           };
           
-          const docRef = await addDoc(collection(db, 'cards'), cardData);
+          const docRef = await addDoc(collection(db, 'businessCards'), cardData);
+          console.log('✅ Card synced to Firestore with ID:', docRef.id);
           
-          // Update local state
-          const newCard = { ...card, id: docRef.id };
-          set((state) => ({
-            cards: [...state.cards, newCard],
-            isLoading: false
+          // Update the card with the Firestore ID in background
+          set(state => ({
+            cards: state.cards.map(c => 
+              c.id === card.id ? { ...c, id: docRef.id } : c
+            )
           }));
-          
-          return true;
-        } catch (error: any) {
-          console.error('Error adding card:', error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Failed to add card' 
-          });
-          return false;
+        } catch (firestoreError) {
+          console.error('⚠️ Firestore sync error (non-blocking):', firestoreError);
+          // Don't fail the operation - card is already in local state
         }
-      },
+      }
+
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ Add card error:', error);
+      set({ 
+        error: error.message || 'Failed to add card', 
+        isLoading: false 
+      });
+      return false;
+    }
+  },
+
+  getCard: (id: string): BusinessCard | null => {
+    const { cards } = get();
+    return cards.find(card => card.id === id) || null;
+  },
+
+  updateCard: async (id: string, updates: Partial<BusinessCard>) => {
+    try {
+      set({ isLoading: true, error: null });
       
-      updateCard: async (id: string, updates: Partial<BusinessCard>) => {
+      const currentUser = auth?.currentUser;
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      // Update in Firestore
+      if (db) {
         try {
-          set({ isLoading: true, error: null });
-          
-          if (!db) throw new Error('Database not available');
-          
-          // Update in Firestore
-          const cardRef = doc(db, 'cards', id);
-          await updateDoc(cardRef, {
+          await updateDoc(doc(db, 'businessCards', id), {
             ...updates,
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
           });
-          
-          // Update local state
-          set((state) => ({
-            cards: state.cards.map(card =>
-              card.id === id
-                ? { ...card, ...updates, updatedAt: Date.now() }
-                : card
-            ),
-            isLoading: false
-          }));
-        } catch (error: any) {
-          console.error('Error updating card:', error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Failed to update card' 
-          });
+          console.log('Card updated in Firestore');
+        } catch (firestoreError) {
+          console.error('Firestore error:', firestoreError);
+          // Continue even if Firestore fails
         }
-      },
+      }
+
+      // Update local state
+      set(state => ({
+        cards: state.cards.map(card => 
+          card.id === id ? { ...card, ...updates } : card
+        ),
+        isLoading: false,
+        error: null
+      }));
+
+    } catch (error: any) {
+      console.error('Update card error:', error);
+      set({ 
+        error: error.message || 'Failed to update card', 
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  deleteCard: async (id: string) => {
+    try {
+      set({ isLoading: true, error: null });
       
-      deleteCard: async (id: string) => {
+      const currentUser = auth?.currentUser;
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      // Delete from Firestore
+      if (db) {
         try {
-          set({ isLoading: true, error: null });
-          
-          if (!db) throw new Error('Database not available');
-          
-          // Delete from Firestore
-          await deleteDoc(doc(db, 'cards', id));
-          
-          // Update local state
-          set((state) => ({
-            cards: state.cards.filter(card => card.id !== id),
-            isLoading: false
-          }));
-        } catch (error: any) {
-          console.error('Error deleting card:', error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Failed to delete card' 
-          });
+          await deleteDoc(doc(db, 'businessCards', id));
+          console.log('Card deleted from Firestore');
+        } catch (firestoreError) {
+          console.error('Firestore error:', firestoreError);
+          // Continue even if Firestore fails
         }
-      },
+      }
+
+      // Remove from local state
+      set(state => ({
+        cards: state.cards.filter(card => card.id !== id),
+        isLoading: false,
+        error: null
+      }));
+
+    } catch (error: any) {
+      console.error('Delete card error:', error);
+      set({ 
+        error: error.message || 'Failed to delete card', 
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  loadCards: async () => {
+    try {
+      set({ isLoading: true, error: null });
       
-      getCard: (id: string) => {
+      const currentUser = auth?.currentUser;
+      if (!currentUser) {
+        set({ cards: [], isLoading: false });
+        return;
+      }
+
+      // Load from Firestore
+      if (db) {
         try {
-          const { cards } = get();
-          return cards.find(card => card.id === id);
-        } catch (error) {
-          console.error('Error getting card:', error);
-          return undefined;
-        }
-      },
-      
-      searchCards: (query: string) => {
-        try {
-          const { cards } = get();
-          const lowercaseQuery = query.toLowerCase();
-          
-          return cards.filter(card =>
-            card.name.toLowerCase().includes(lowercaseQuery) ||
-            card.company?.toLowerCase().includes(lowercaseQuery) ||
-            card.email?.toLowerCase().includes(lowercaseQuery) ||
-            card.phone?.includes(query) ||
-            card.title?.toLowerCase().includes(lowercaseQuery)
-          );
-        } catch (error) {
-          console.error('Error searching cards:', error);
-          return [];
-        }
-      },
-      
-      clearAllCards: () => {
-        try {
-          set({ cards: [] });
-        } catch (error) {
-          console.error('Error clearing cards:', error);
-        }
-      },
-      
-      // Clean up fallback cards (temporary cards created when OCR fails)
-      cleanupFallbackCards: async () => {
-        try {
-          const { cards } = get();
-          const fallbackCards = cards.filter(card => card._fallbackId);
-          
-          if (fallbackCards.length > 0) {
-            console.log(`Cleaning up ${fallbackCards.length} fallback cards`);
-            
-            // Remove from local state
-            set((state) => ({
-              cards: state.cards.filter(card => !card._fallbackId)
-            }));
-            
-            // Remove from Firestore if they were saved
-            if (db) {
-              const currentUser = auth?.currentUser;
-              if (currentUser) {
-                for (const card of fallbackCards) {
-                  try {
-                    await deleteDoc(doc(db, 'cards', card.id));
-                  } catch (error) {
-                    console.log('Fallback card already removed from Firestore:', card.id);
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error cleaning up fallback cards:', error);
-        }
-      },
-      
-      checkDuplicate: (card: BusinessCard) => {
-        try {
-          const { cards } = get();
-          
-          // Skip duplicate check for fallback data
-          if (card._fallbackId) {
-            return null;
-          }
-          
-          // More intelligent duplicate detection
-          return cards.find(existingCard => {
-            // Skip fallback cards in comparison
-            if (existingCard._fallbackId) {
-              return false;
-            }
-            
-            // Check for exact email match (if both have emails)
-            if (card.email && existingCard.email && 
-                card.email.toLowerCase().trim() === existingCard.email.toLowerCase().trim()) {
-              return true;
-            }
-            
-            // Check for exact phone match (if both have phones)
-            if (card.phone && existingCard.phone && 
-                card.phone.replace(/\D/g, '') === existingCard.phone.replace(/\D/g, '')) {
-              return true;
-            }
-            
-            // Check for name + company combination (more accurate than just name)
-            if (card.name && existingCard.name) {
-              const nameMatch = card.name.toLowerCase().trim() === existingCard.name.toLowerCase().trim();
-              
-              // If names match, also check if companies match (if both have companies)
-              if (nameMatch) {
-                if (card.company && existingCard.company) {
-                  return card.company.toLowerCase().trim() === existingCard.company.toLowerCase().trim();
-                } else if (!card.company && !existingCard.company) {
-                  // Both have no company, so it's likely a duplicate
-                  return true;
-                }
-                // One has company, one doesn't - might be different people
-                return false;
-              }
-            }
-            
-            return false;
-          }) || null;
-        } catch (error) {
-          console.error('Error checking for duplicates:', error);
-          return null;
-        }
-      },
-      
-      syncCards: async () => {
-        try {
-          set({ isLoading: true, error: null });
-          
-          const currentUser = auth?.currentUser;
-          if (!currentUser || !db) {
-            throw new Error('User not authenticated or database not available');
-          }
-          
-          // Fetch cards from Firestore
           const cardsQuery = query(
-            collection(db, 'cards'),
+            collection(db, 'businessCards'),
             where('userId', '==', currentUser.uid),
             orderBy('createdAt', 'desc')
           );
-          
+
           const querySnapshot = await getDocs(cardsQuery);
           const cards: BusinessCard[] = [];
           
-          querySnapshot.forEach((doc) => {
+          querySnapshot.forEach(doc => {
             const data = doc.data();
             cards.push({
               id: doc.id,
@@ -331,60 +209,223 @@ export const useCardStore = create<CardState>()(
               updatedAt: data.updatedAt?.toDate?.() || Date.now(),
             } as BusinessCard);
           });
-          
-          set({ cards, isLoading: false });
-        } catch (error: any) {
-          console.error('Error syncing cards:', error);
-          set({ 
-            isLoading: false, 
-            error: error.message || 'Failed to sync cards' 
-          });
+
+          set({ cards, isLoading: false, error: null });
+          console.log(`Loaded ${cards.length} cards from Firestore`);
+        } catch (firestoreError) {
+          console.error('Firestore error:', firestoreError);
+          set({ cards: [], isLoading: false, error: 'Failed to load cards' });
         }
-      },
+      } else {
+        set({ cards: [], isLoading: false });
+      }
+
+    } catch (error: any) {
+      console.error('Load cards error:', error);
+      set({ 
+        error: error.message || 'Failed to load cards', 
+        isLoading: false 
+      });
+    }
+  },
+
+  syncCards: async () => {
+    try {
+      const currentUser = auth?.currentUser;
+      if (!currentUser || !db) {
+        return;
+      }
+
+      const cardsQuery = query(
+        collection(db, 'businessCards'),
+        where('userId', '==', currentUser.uid),
+        orderBy('createdAt', 'desc')
+      );
+
+      const querySnapshot = await getDocs(cardsQuery);
+      const cards: BusinessCard[] = [];
       
-      subscribeToCards: () => {
-        try {
-          const currentUser = auth?.currentUser;
-          if (!currentUser || !db) {
-            return null;
-          }
-          
-          const cardsQuery = query(
-            collection(db, 'cards'),
-            where('userId', '==', currentUser.uid),
-            orderBy('createdAt', 'desc')
-          );
-          
-          const unsubscribe = onSnapshot(cardsQuery, (querySnapshot) => {
-            const cards: BusinessCard[] = [];
-            
-            querySnapshot.forEach((doc) => {
-              const data = doc.data();
-              cards.push({
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.() || Date.now(),
-                updatedAt: data.updatedAt?.toDate?.() || Date.now(),
-              } as BusinessCard);
-            });
-            
-            set({ cards });
-          }, (error) => {
-            console.error('Error listening to cards:', error);
-            set({ error: error.message });
-          });
-          
-          return unsubscribe;
-        } catch (error: any) {
-          console.error('Error setting up cards subscription:', error);
-          return null;
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        cards.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || Date.now(),
+          updatedAt: data.updatedAt?.toDate?.() || Date.now(),
+        } as BusinessCard);
+      });
+
+      set({ cards, error: null });
+      console.log(`Synced ${cards.length} cards from Firestore`);
+    } catch (error: any) {
+      console.error('Sync cards error:', error);
+      set({ error: error.message || 'Failed to sync cards' });
+    }
+  },
+
+  searchCards: (searchQuery: string): BusinessCard[] => {
+    const { cards } = get();
+    if (!searchQuery.trim()) {
+      return cards;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    return cards.filter(card => {
+      return (
+        card.name?.toLowerCase().includes(query) ||
+        card.company?.toLowerCase().includes(query) ||
+        card.title?.toLowerCase().includes(query) ||
+        card.email?.toLowerCase().includes(query) ||
+        card.phone?.toLowerCase().includes(query) ||
+        card.website?.toLowerCase().includes(query) ||
+        card.address?.toLowerCase().includes(query)
+      );
+    });
+  },
+
+  checkDuplicate: (card: BusinessCard): BusinessCard | null => {
+    const { cards } = get();
+    
+    // Skip duplicate check for fallback cards
+    if (card._fallbackId || card._isFallback) {
+      return null;
+    }
+
+    return cards.find(existingCard => {
+      // Skip fallback cards in comparison
+      if (existingCard._fallbackId || existingCard._isFallback) {
+        return false;
+      }
+
+      // Enhanced duplicate detection with multiple strategies
+      
+      // Strategy 1: Exact email match (highest confidence)
+      if (card.email && existingCard.email && 
+          card.email.toLowerCase().trim() === existingCard.email.toLowerCase().trim()) {
+        console.log('Duplicate detected: Exact email match');
+        return true;
+      }
+
+      // Strategy 2: Phone number match (high confidence)
+      if (card.phone && existingCard.phone) {
+        const normalizedCardPhone = card.phone.replace(/\D/g, '');
+        const normalizedExistingPhone = existingCard.phone.replace(/\D/g, '');
+        if (normalizedCardPhone && normalizedExistingPhone && 
+            normalizedCardPhone === normalizedExistingPhone) {
+          console.log('Duplicate detected: Phone number match');
+          return true;
         }
       }
-    }),
-    {
-      name: 'card-storage',
-      storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ cards: state.cards }),
+
+      // Strategy 3: Name + Company combination (medium confidence)
+      if (card.name && existingCard.name && card.company && existingCard.company) {
+        const normalizedCardName = normalizeForComparison(card.name);
+        const normalizedExistingName = normalizeForComparison(existingCard.name);
+        const normalizedCardCompany = normalizeForComparison(card.company);
+        const normalizedExistingCompany = normalizeForComparison(existingCard.company);
+        
+        if (normalizedCardName === normalizedExistingName && 
+            normalizedCardCompany === normalizedExistingCompany) {
+          console.log('Duplicate detected: Name + Company match');
+          return true;
+        }
+      }
+
+      // Strategy 4: Fuzzy name match with high similarity (lower confidence)
+      if (card.name && existingCard.name) {
+        const normalizedCardName = normalizeForComparison(card.name);
+        const normalizedExistingName = normalizeForComparison(existingCard.name);
+        
+        // Check for very similar names (handles typos and minor variations)
+        if (normalizedCardName.length > 3 && normalizedExistingName.length > 3) {
+          const similarity = calculateSimilarity(normalizedCardName, normalizedExistingName);
+          if (similarity > 0.85) { // 85% similarity threshold
+            console.log('Duplicate detected: Fuzzy name match', similarity);
+            return true;
+          }
+        }
+      }
+
+      // Strategy 5: Website match (if both have websites)
+      if (card.website && existingCard.website) {
+        const normalizedCardWebsite = card.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+        const normalizedExistingWebsite = existingCard.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+        
+        if (normalizedCardWebsite === normalizedExistingWebsite) {
+          console.log('Duplicate detected: Website match');
+          return true;
+        }
+      }
+
+      return false;
+    }) || null;
+  },
+
+  cleanupFallbackCards: async () => {
+    try {
+      const { cards } = get();
+      const currentUser = auth?.currentUser;
+      
+      if (!currentUser) return;
+
+      // Remove fallback cards from local state
+      const nonFallbackCards = cards.filter(card => !card._fallbackId && !card._isFallback);
+      set({ cards: nonFallbackCards });
+
+      // Remove fallback cards from Firestore
+      const fallbackCards = cards.filter(card => card._fallbackId || card._isFallback);
+      for (const card of fallbackCards) {
+        if (db) {
+          try {
+            await deleteDoc(doc(db, 'businessCards', card.id));
+          } catch (error) {
+            console.error('Error deleting fallback card:', error);
+          }
+        }
+      }
+
+      console.log(`Cleaned up ${fallbackCards.length} fallback cards`);
+    } catch (error) {
+      console.error('Error cleaning up fallback cards:', error);
     }
-  )
-);
+  },
+
+  setLoading: (loading: boolean) => {
+    set({ isLoading: loading });
+  },
+
+  setError: (error: string | null) => {
+    set({ error });
+  },
+}));
+
+// Helper function to calculate string similarity (Levenshtein distance)
+const calculateSimilarity = (str1: string, str2: string): number => {
+  const matrix = [];
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  
+  const maxLength = Math.max(str1.length, str2.length);
+  const distance = matrix[str2.length][str1.length];
+  return 1 - (distance / maxLength);
+};

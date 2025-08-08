@@ -7,7 +7,11 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  Image
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -73,6 +77,9 @@ export default function EditCardScreen() {
   };
   
   const handleSave = () => {
+    // Dismiss keyboard before saving
+    Keyboard.dismiss();
+    
     // Validate required fields
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Name is required');
@@ -132,147 +139,180 @@ export default function EditCardScreen() {
     }
   };
   
-  const handleRemoveImage = () => {
-    setFormData(prev => ({ ...prev, imageUri: '' }));
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
   };
   
   return (
-    <ScrollView style={[
-      styles.container,
-      { 
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom 
-      }
-    ]}>
-      <View style={styles.imageSection}>
-        {formData.imageUri ? (
-          <View style={styles.imageContainer}>
-            <Ionicons name="image" source={{ uri: formData.imageUri }} 
-              style={styles.cardImage}
-              resizeMode="cover"
-            />
-            <TouchableOpacity 
-              style={styles.removeImageButton}
-              onPress={handleRemoveImage}
-            >
-              <Ionicons name="close" size={20} color="white" />
-            </TouchableOpacity>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.imageSection}>
+            {formData.imageUri ? (
+              <View style={styles.imageContainer}>
+                <Image source={{ uri: formData.imageUri }} style={styles.cardImage} />
+                <TouchableOpacity 
+                  style={styles.removeImageButton}
+                  onPress={() => setFormData(prev => ({ ...prev, imageUri: '' }))}
+                >
+                  <Ionicons name="close" size={20} color="white" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity 
+                style={styles.imagePlaceholder}
+                onPress={handlePickImage}
+              >
+                <Ionicons name="camera" size={32} color={Colors.light.primary} />
+                <Text style={styles.imagePlaceholderText}>Add Card Image</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : (
-          <TouchableOpacity 
-            style={styles.imagePlaceholder}
-            onPress={handlePickImage}
-          >
-            <Ionicons name="camera" size={32} color={Colors.light.primary} />
-            <Text style={styles.imagePlaceholderText}>Add Card Image</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      <View style={styles.formSection}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Name *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.name}
-            onChangeText={(value) => handleChange('name', value)}
-            placeholder="Enter name"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.title}
-            onChangeText={(value) => handleChange('title', value)}
-            placeholder="Enter title"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Company</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.company}
-            onChangeText={(value) => handleChange('company', value)}
-            placeholder="Enter company"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.email}
-            onChangeText={(value) => handleChange('email', value)}
-            placeholder="Enter email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.phone}
-            onChangeText={(value) => handleChange('phone', value)}
-            placeholder="Enter phone"
-            keyboardType="phone-pad"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Website</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.website}
-            onChangeText={(value) => handleChange('website', value)}
-            placeholder="Enter website"
-            keyboardType="url"
-            autoCapitalize="none"
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Address</Text>
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            value={formData.address}
-            onChangeText={(value) => handleChange('address', value)}
-            placeholder="Enter address"
-            multiline
-          />
-        </View>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            value={formData.notes}
-            onChangeText={(value) => handleChange('notes', value)}
-            placeholder="Enter notes"
-            multiline
-          />
-        </View>
-      </View>
-      
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Cancel"
-          onPress={() => router.back()}
-          variant="outline"
-          style={styles.cancelButton}
-        />
-        <Button
-          title="Save Changes"
-          onPress={handleSave}
-          variant="primary"
-          style={styles.saveButton}
-        />
-      </View>
-    </ScrollView>
+          
+          <View style={styles.formSection}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.name}
+                onChangeText={(value) => handleChange('name', value)}
+                placeholder="Enter name"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={50}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.title}
+                onChangeText={(value) => handleChange('title', value)}
+                placeholder="Enter title"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={100}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Company</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.company}
+                onChangeText={(value) => handleChange('company', value)}
+                placeholder="Enter company"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={100}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.email}
+                onChangeText={(value) => handleChange('email', value)}
+                placeholder="Enter email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={100}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Phone</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.phone}
+                onChangeText={(value) => handleChange('phone', value)}
+                placeholder="Enter phone"
+                keyboardType="phone-pad"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={20}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Website</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.website}
+                onChangeText={(value) => handleChange('website', value)}
+                placeholder="Enter website"
+                keyboardType="url"
+                autoCapitalize="none"
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={100}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Address</Text>
+              <TextInput
+                style={[styles.input, styles.multilineInput]}
+                value={formData.address}
+                onChangeText={(value) => handleChange('address', value)}
+                placeholder="Enter address"
+                multiline
+                returnKeyType="next"
+                blurOnSubmit={false}
+                maxLength={200}
+                textAlignVertical="top"
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Notes</Text>
+              <TextInput
+                style={[styles.input, styles.multilineInput]}
+                value={formData.notes}
+                onChangeText={(value) => handleChange('notes', value)}
+                placeholder="Enter notes"
+                multiline
+                returnKeyType="done"
+                blurOnSubmit={true}
+                maxLength={500}
+                textAlignVertical="top"
+              />
+            </View>
+          </View>
+          
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Cancel"
+              onPress={() => {
+                Keyboard.dismiss();
+                router.back();
+              }}
+              variant="outline"
+              style={styles.cancelButton}
+            />
+            <Button
+              title="Save Changes"
+              onPress={handleSave}
+              variant="primary"
+              style={styles.saveButton}
+            />
+          </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -280,6 +320,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Extra padding for keyboard
   },
   imageSection: {
     padding: 16,
@@ -343,10 +389,13 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     borderWidth: 1,
     borderColor: Colors.light.border,
+    minHeight: 44,
   },
   multilineInput: {
     minHeight: 100,
     textAlignVertical: 'top',
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -365,10 +414,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
   },
   notFoundText: {
     fontSize: 18,
     color: Colors.light.textSecondary,
+    marginBottom: 16,
   },
 });
