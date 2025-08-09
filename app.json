@@ -2,7 +2,7 @@
   "expo": {
     "name": "Biztomate",
     "slug": "biztomate-scanner",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "biztomatescanner",
@@ -18,18 +18,22 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
-      "buildNumber": "171",
+      "buildNumber": "172",
       "googleServicesFile": "GoogleService-Info-3.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "biztomatescanner",
-            "CFBundleURLSchemes": ["biztomatescanner"]
+            "CFBundleURLSchemes": [
+              "biztomatescanner"
+            ]
           },
           {
             "CFBundleURLName": "GoogleSignIn",
-            "CFBundleURLSchemes": ["com.googleusercontent.apps.11602849370-3dgmd64eee4715h9vsit2u69r1rfbpc3"]
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.11602849370-3dgmd64eee4715h9vsit2u69r1rfbpc3"
+            ]
           }
         ]
       }
