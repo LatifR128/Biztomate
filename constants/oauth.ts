@@ -4,9 +4,12 @@
 export const OAUTH_CONFIG = {
   // Google OAuth Configuration
   GOOGLE: {
-    CLIENT_ID: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // Updated to match app.json
-    CLIENT_SECRET: 'YOUR_GOOGLE_CLIENT_SECRET', // Replace with your Google OAuth client secret
+    // Web OAuth Client ID (keep iOS Client ID for native sign-in separate)
+    CLIENT_ID: 'REDACTED_CLIENT_ID',
+    CLIENT_SECRET: 'REDACTED_CLIENT_SECRET',
     REDIRECT_URI: 'biztomatescanner://oauth/google',
+    REDIRECT_URI_WEB: 'https://biztomate-1d23d.firebaseapp.com/auth/handler',
+    JAVASCRIPT_ORIGINS: ['https://biztomate-1d23d.firebaseapp.com'],
     SCOPES: [
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/drive.file'
@@ -49,11 +52,23 @@ export const API_ENDPOINTS = {
 };
 
 // Check if OAuth is configured
+export const isGoogleConfigured = (): boolean => {
+  return OAUTH_CONFIG.GOOGLE.CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID' &&
+    typeof OAUTH_CONFIG.GOOGLE.CLIENT_SECRET === 'string' &&
+    OAUTH_CONFIG.GOOGLE.CLIENT_SECRET !== '' &&
+    !OAUTH_CONFIG.GOOGLE.CLIENT_SECRET.includes('YOUR_GOOGLE_CLIENT_SECRET');
+};
+
+export const isMicrosoftConfigured = (): boolean => {
+  return OAUTH_CONFIG.MICROSOFT.CLIENT_ID !== 'YOUR_MICROSOFT_CLIENT_ID' &&
+    typeof OAUTH_CONFIG.MICROSOFT.CLIENT_SECRET === 'string' &&
+    OAUTH_CONFIG.MICROSOFT.CLIENT_SECRET !== '' &&
+    !OAUTH_CONFIG.MICROSOFT.CLIENT_SECRET.includes('YOUR_MICROSOFT_CLIENT_SECRET');
+};
+
+// Backward-compatible aggregate check
 export const isOAuthConfigured = (): boolean => {
-  return (
-    OAUTH_CONFIG.GOOGLE.CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID' &&
-    OAUTH_CONFIG.MICROSOFT.CLIENT_ID !== 'YOUR_MICROSOFT_CLIENT_ID'
-  );
+  return isGoogleConfigured() && isMicrosoftConfigured();
 };
 
 // Get OAuth error messages

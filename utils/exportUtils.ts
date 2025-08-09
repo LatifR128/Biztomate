@@ -92,15 +92,19 @@ const initiateGoogleOAuth = async (): Promise<string | null> => {
       throw new Error('Google OAuth is not configured. Please contact support.');
     }
 
+    const redirectUri = Platform.OS === 'web' && (OAUTH_CONFIG as any).GOOGLE.REDIRECT_URI_WEB
+      ? (OAUTH_CONFIG as any).GOOGLE.REDIRECT_URI_WEB
+      : OAUTH_CONFIG.GOOGLE.REDIRECT_URI;
+
     const authUrl = `${OAUTH_CONFIG.GOOGLE.AUTH_URL}?` +
       `client_id=${OAUTH_CONFIG.GOOGLE.CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(OAUTH_CONFIG.GOOGLE.REDIRECT_URI)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
       `&response_type=code` +
       `&scope=${encodeURIComponent(OAUTH_CONFIG.GOOGLE.SCOPES)}` +
       `&access_type=offline` +
       `&prompt=consent`;
 
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, OAUTH_CONFIG.GOOGLE.REDIRECT_URI);
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
     
     if (result.type === 'success' && result.url) {
       const url = new URL(result.url);
@@ -128,7 +132,7 @@ const exchangeGoogleCodeForToken = async (code: string): Promise<any> => {
         client_secret: OAUTH_CONFIG.GOOGLE.CLIENT_SECRET,
         code: code,
         grant_type: 'authorization_code',
-        redirect_uri: OAUTH_CONFIG.GOOGLE.REDIRECT_URI,
+        redirect_uri: redirectUri,
       }),
     });
 

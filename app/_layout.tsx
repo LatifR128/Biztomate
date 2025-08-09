@@ -7,6 +7,7 @@ import { useUserStore } from '@/store/userStore';
 import { userDataStorage } from '@/utils/userDataStorage';
 import { auth } from '@/lib/firebase';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Auth guard component
 function AuthGuard() {
@@ -80,7 +81,7 @@ export default function RootLayout() {
   }, [isAuthenticated, user]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="auto" />
       <AuthGuard />
       <ErrorBoundary>
@@ -101,6 +102,6 @@ export default function RootLayout() {
           <Stack.Screen name="welcome" options={{ headerShown: false }} />
         </Stack>
       </ErrorBoundary>
-    </>
+    </SafeAreaProvider>
   );
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Biztomate",
     "slug": "biztomate-scanner",
-    "version": "1.6.0",
+    "version": "1.6.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "biztomatescanner",
@@ -18,8 +18,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.biztomate.scanner",
-      "buildNumber": "168",
-      "googleServicesFile": "GoogleService-Info-2.plist",
+      "buildNumber": "171",
+      "googleServicesFile": "GoogleService-Info-3.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [

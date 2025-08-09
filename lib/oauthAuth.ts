@@ -1,23 +1,20 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { 
-  signInWithCredential, 
+import Constants from 'expo-constants';
+import {
+  signInWithCredential,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   updateProfile,
-  signInWithPopup
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Platform } from 'react-native';
 import { userDataStorage, UserData } from '@/utils/userDataStorage';
+import { OAUTH_CONFIG } from '@/constants/oauth';
 
-// Configure Google Sign-In
-GoogleSignin.configure({
-  iosClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com', // iOS client ID only
-  offlineAccess: true,
-});
+// Note: Do not import GoogleSignin statically; dynamically import when needed to avoid Expo Go crashes
 
 // Configure WebBrowser for OAuth
 WebBrowser.maybeCompleteAuthSession();
@@ -90,13 +87,64 @@ export const signInWithGoogle = async (): Promise<AuthResult> => {
       };
     }
 
-    // Native (iOS/Android): use GoogleSignin
-    // Check if device supports Google Play Services (Android)
+    // On Expo Go (appOwnership === 'expo'), native module isn't available. Fallback to web popup flow.
+    if (Constants.appOwnership === 'expo') {
+      if (!auth) throw new Error('Firebase auth not initialized');
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+      // Create user doc and save local profile (same as web branch)
+      if (db && user) {
+        await setDoc(doc(db, 'users', user.uid), {
+          email: user.email,
+          name: user.displayName || 'User',
+          photoURL: user.photoURL || undefined,
+          subscriptionPlan: 'free',
+          trialEndDate: Date.now() + (7 * 24 * 60 * 60 * 1000),
+          scannedCards: 0,
+          maxCards: 5,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          provider: 'google',
+        });
+      }
+      const userData: UserData = {
+        id: user.uid,
+        email: user.email || '',
+        name: user.displayName || 'User',
+        photoURL: user.photoURL || undefined,
+        subscriptionPlan: 'free',
+        trialEndDate: Date.now() + (7 * 24 * 60 * 60 * 1000),
+        scannedCards: 0,
+        maxCards: 5,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        provider: 'google',
+      };
+      await userDataStorage.saveUserProfile(userData);
+      return {
+        success: true,
+        user: {
+          id: user.uid,
+          email: user.email || '',
+          name: user.displayName || 'User',
+          photoURL: user.photoURL || undefined,
+          provider: 'google',
+        },
+      };
+    }
+
+    // Native dev/prod build: require Google Sign-In module synchronously
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+    GoogleSignin.configure({
+      iosClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com',
+      webClientId: process.env.GOOGLE_CLIENT_ID || OAUTH_CONFIG.GOOGLE.CLIENT_ID,
+      offlineAccess: true,
+    });
     if (Platform.OS === 'android') {
       await GoogleSignin.hasPlayServices();
     }
-
-    // Sign in with Google
     const userInfo = await GoogleSignin.signIn();
     
     if (!userInfo) {
@@ -166,9 +214,15 @@ export const signInWithGoogle = async (): Promise<AuthResult> => {
 // Sign out from OAuth providers
 export const signOutFromOAuth = async (): Promise<void> => {
   try {
-    // Sign out from Google
+    // Sign out from Google; avoid requiring native module on Expo Go
     try {
-      await GoogleSignin.signOut();
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        if (Constants.appOwnership !== 'expo') {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+          await GoogleSignin.signOut();
+        }
+      }
     } catch (error) {
       // Ignore sign out errors
     }
