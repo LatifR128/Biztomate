@@ -138,8 +138,8 @@ export const signInWithGoogle = async (): Promise<AuthResult> => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { GoogleSignin } = require('@react-native-google-signin/google-signin');
     GoogleSignin.configure({
-      iosClientId: '589420296847-30lpkp40vn7kjn27qkq72i9dma9kc0dc.apps.googleusercontent.com',
-      webClientId: process.env.GOOGLE_CLIENT_ID || OAUTH_CONFIG.GOOGLE.CLIENT_ID,
+      iosClientId: '11602849370-3dgmd64eee4715h9vsit2u69r1rfbpc3.apps.googleusercontent.com',
+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || OAUTH_CONFIG.GOOGLE.CLIENT_ID,
       offlineAccess: true,
     });
     if (Platform.OS === 'android') {

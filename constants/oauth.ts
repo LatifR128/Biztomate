@@ -5,8 +5,8 @@ export const OAUTH_CONFIG = {
   // Google OAuth Configuration
   GOOGLE: {
     // Web OAuth Client ID (keep iOS Client ID for native sign-in separate)
-    CLIENT_ID: 'REDACTED_CLIENT_ID',
-    CLIENT_SECRET: 'REDACTED_CLIENT_SECRET',
+    CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || '',
+    CLIENT_SECRET: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_SECRET || '',
     REDIRECT_URI: 'biztomatescanner://oauth/google',
     REDIRECT_URI_WEB: 'https://biztomate-1d23d.firebaseapp.com/auth/handler',
     JAVASCRIPT_ORIGINS: ['https://biztomate-1d23d.firebaseapp.com'],
